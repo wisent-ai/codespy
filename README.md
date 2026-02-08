@@ -52,45 +52,71 @@ python3 codespy.py . --format markdown -o report.md
 
 ## GitHub Action
 
-Use codespy in your CI/CD pipeline with a single line:
+Use codespy in your CI/CD pipeline to automatically scan pull requests for
+security vulnerabilities, post findings as PR comments, and optionally feed
+results into GitHub's Security tab via SARIF.
 
-```yaml
-- uses: wisent-ai/codespy@v1
-```
-
-### Full Example
+### Quick Start
 
 ```yaml
 name: Security Scan
-on: [push, pull_request]
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
-  security:
+  scan:
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write  # Required for Code Scanning upload
     steps:
       - uses: actions/checkout@v4
-
-      - name: Run codespy
-        uses: wisent-ai/codespy@v1
         with:
-          severity: medium        # Report medium+ findings
-          fail-on-findings: high  # Fail CI on high/critical
-          show-fixes: true        # Include fix suggestions
+          fetch-depth: 0
+
+      - uses: wisent-ai/codespy@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+That single block will:
+- Scan only the files changed in the PR (fast)
+- Post a detailed comment on the PR with findings and a security score
+- Fail the check if any **high** or **critical** issues are found
+- Write a summary to the GitHub Actions step summary page
+
+### Advanced Configuration
+
+```yaml
+- uses: wisent-ai/codespy@v1
+  with:
+    path: './src'                  # Scan a subdirectory
+    severity-threshold: medium     # Report medium, high, and critical
+    scan-changed-only: 'false'     # Scan the entire repository
+    post-comment: 'true'           # Post results as a PR comment
+    fail-on-findings: 'true'       # Fail if findings meet the threshold
+    sarif-upload: 'true'           # Upload SARIF to Security tab
+    output-format: markdown        # Report format (markdown, json, sarif, terminal)
+    show-fixes: 'true'             # Include fix suggestions
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Action Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `path` | `.` | Path to scan |
-| `severity` | `low` | Minimum severity to report: `info`, `low`, `medium`, `high`, `critical` |
-| `format` | `sarif` | Output format: `terminal`, `json`, `sarif`, `markdown` |
-| `output-file` | `codespy-results.sarif` | Output file path |
-| `fail-on-findings` | `high` | Fail if findings at this level or above. Set to `none` to never fail |
-| `show-fixes` | `true` | Include fix suggestions |
-| `upload-sarif` | `true` | Auto-upload SARIF to GitHub Code Scanning |
+| `path` | `.` | Path to scan (relative to workspace root) |
+| `severity-threshold` | `high` | Minimum severity to report: `info`, `low`, `medium`, `high`, `critical` |
+| `output-format` | `markdown` | Output format: `terminal`, `json`, `sarif`, `markdown` |
+| `scan-changed-only` | `true` | Only scan files changed in the PR (ignored on push) |
+| `post-comment` | `true` | Post a PR comment with findings |
+| `fail-on-findings` | `true` | Fail the action if findings at or above the severity threshold exist. Set to `false` to never fail |
+| `sarif-upload` | `false` | Upload SARIF results to GitHub Code Scanning / Security tab |
+| `show-fixes` | `true` | Include suggested fixes in the report |
+| `python-version` | `3.12` | Python version to use for the scan |
 
 ### Action Outputs
 
@@ -99,27 +125,76 @@ jobs:
 | `total-findings` | Total number of findings |
 | `critical-count` | Number of critical severity findings |
 | `high-count` | Number of high severity findings |
+| `medium-count` | Number of medium severity findings |
+| `low-count` | Number of low severity findings |
 | `security-score` | Security score (0-100) |
 | `security-grade` | Letter grade (A+ to F) |
+| `sarif-file` | Path to the SARIF file (when `sarif-upload` is enabled) |
+| `report-file` | Path to the formatted report file |
 
-### Use Outputs in Your Workflow
+### Example PR Comment
+
+When `post-comment` is enabled, codespy posts (or updates) a comment like this
+on every pull request:
+
+> **Security Score: 82/100 (Grade: B+)**
+>
+> Scanned **12 changed file(s)** in this pull request.
+>
+> | Severity | Count |
+> |----------|------:|
+> | HIGH | **2** |
+> | MEDIUM | 3 |
+> | **Total** | **5** |
+>
+> <details>
+> <summary>Top findings (5 of 5)</summary>
+>
+> - **[SEC001] Hardcoded password** (`src/config.py:14`) -- Use environment variables or a secrets manager.
+> - **[INJ002] Shell injection risk** (`scripts/deploy.sh:42`) -- Use subprocess with shell=False.
+> - ...
+> </details>
+
+The comment is automatically updated on subsequent pushes to the same PR to
+avoid notification spam.
+
+### SARIF / Security Tab Integration
+
+Enable SARIF upload to surface findings directly in GitHub's Security tab under
+**Code scanning alerts**:
+
+```yaml
+- uses: wisent-ai/codespy@v1
+  with:
+    sarif-upload: 'true'
+    scan-changed-only: 'false'
+    fail-on-findings: 'false'
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+This requires the `security-events: write` permission on the job:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+```
+
+### Using Outputs in Downstream Steps
 
 ```yaml
 - name: Run codespy
   id: scan
   uses: wisent-ai/codespy@v1
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-- name: Comment on PR
-  if: github.event_name == 'pull_request'
-  uses: actions/github-script@v7
-  with:
-    script: |
-      github.rest.issues.createComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        issue_number: context.issue.number,
-        body: `## Security Score: ${{ steps.scan.outputs.security-score }}/100 (${{ steps.scan.outputs.security-grade }})\nFindings: ${{ steps.scan.outputs.total-findings }} total, ${{ steps.scan.outputs.critical-count }} critical, ${{ steps.scan.outputs.high-count }} high`
-      })
+- name: Gate deployment
+  if: steps.scan.outputs.critical-count != '0'
+  run: |
+    echo "Blocking deployment: ${{ steps.scan.outputs.critical-count }} critical findings"
+    exit 1
 ```
 
 ## What It Detects
@@ -195,21 +270,9 @@ Human-readable tables. Perfect for PR comments, Notion, Confluence, or any docum
 
 ### GitHub Actions (Recommended)
 
-Use the action directly:
-```yaml
-- uses: wisent-ai/codespy@v1
-```
-
-Or run manually:
-```yaml
-- name: Run codespy
-  run: |
-    curl -sO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
-    python3 codespy.py . --format sarif -o results.sarif --severity medium
-- uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: results.sarif
-```
+See the [GitHub Action](#github-action) section above for full documentation.
+A ready-to-copy example workflow is provided at
+[`.github/workflows/example-security-scan.yml`](.github/workflows/example-security-scan.yml).
 
 ### GitLab CI
 ```yaml

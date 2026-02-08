@@ -185,6 +185,8 @@ class ScanResult:
         return dict(counts)
 
     def to_dict(self):
+        score = compute_score(self)
+        grade = score_to_grade(score)
         return {
             "version": __version__,
             "path": self.path,
@@ -195,6 +197,8 @@ class ScanResult:
             "total_findings": self.finding_count,
             "severity_counts": self.severity_counts,
             "category_counts": self.category_counts,
+            "security_score": score,
+            "security_grade": grade,
             "language_stats": self.language_stats,
             "findings": [f.to_dict() for f in self.findings],
         }
@@ -995,15 +999,39 @@ def scan_file(file_path: str, language: str, rules: list,
 
 
 def run_scan(path: str, min_severity: Severity = Severity.INFO,
-             rules: list = None) -> ScanResult:
-    """Run a complete scan on a path."""
+             rules: list = None, file_list: list = None) -> ScanResult:
+    """Run a complete scan on a path.
+
+    Args:
+        path: Root path for the scan (used for relative path computation).
+        min_severity: Minimum severity threshold for reported findings.
+        rules: Custom rule set. Defaults to RULES.
+        file_list: Optional explicit list of file paths to scan. When
+                   provided, only these files are scanned instead of
+                   walking the directory tree.
+    """
     start_time = time.time()
     result = ScanResult(path=os.path.abspath(path))
 
     if rules is None:
         rules = RULES
 
-    files = collect_files(path)
+    if file_list is not None:
+        # Scan only the explicitly provided files
+        files = []
+        for fp in file_list:
+            abs_fp = os.path.abspath(fp)
+            lang = detect_language_from_path(abs_fp)
+            if lang and os.path.isfile(abs_fp):
+                try:
+                    size = os.path.getsize(abs_fp)
+                    if size <= MAX_FILE_SIZE:
+                        files.append((abs_fp, lang))
+                except OSError:
+                    pass
+    else:
+        files = collect_files(path)
+
     language_counts = Counter()
     language_lines = Counter()
 
@@ -1284,6 +1312,10 @@ def main():
         help="Write output to file instead of stdout"
     )
     parser.add_argument(
+        "--files", nargs="+", metavar="FILE",
+        help="Scan only these specific files (instead of walking a directory tree)"
+    )
+    parser.add_argument(
         "--version", "-v", action="version",
         version=f"codespy {__version__}"
     )
@@ -1303,7 +1335,8 @@ def main():
         sys.exit(1)
 
     # Run scan
-    result = run_scan(args.path, min_severity=min_severity)
+    result = run_scan(args.path, min_severity=min_severity,
+                      file_list=args.files if args.files else None)
 
     # Format output
     use_color = not args.no_color and args.format == "terminal" and sys.stdout.isatty()

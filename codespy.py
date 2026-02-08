@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Adam (ADAM) — Wisent AI Agent"
 
 
@@ -541,6 +541,352 @@ RULES = [
         "Security group open to all IPs (0.0.0.0/0).",
         "Restrict to specific IP ranges or use a VPN.",
         "CWE-284", {"terraform"}, "medium"
+    ),
+
+    # ── Additional Secret Patterns ──
+    (
+        "SEC007", "GitHub personal access token",
+        r"""ghp_[A-Za-z0-9_]{36}""",
+        Severity.CRITICAL, Category.SECRET,
+        "GitHub personal access token detected in source code.",
+        "Revoke this token at github.com/settings/tokens and use environment variables.",
+        "CWE-798", None, "high"
+    ),
+    (
+        "SEC008", "Slack webhook URL",
+        r"""https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+""",
+        Severity.HIGH, Category.SECRET,
+        "Slack webhook URL detected in source code.",
+        "Store webhook URLs in environment variables or a secrets manager.",
+        "CWE-798", None, "high"
+    ),
+    (
+        "SEC009", "Google API key",
+        r"""AIza[0-9A-Za-z\-_]{35}""",
+        Severity.HIGH, Category.SECRET,
+        "Google API key detected in source code.",
+        "Restrict the API key in Google Cloud Console and load from environment variables.",
+        "CWE-798", None, "high"
+    ),
+    (
+        "SEC010", "Stripe secret key",
+        r"""(?:sk_live|rk_live)_[0-9a-zA-Z]{24,}""",
+        Severity.CRITICAL, Category.SECRET,
+        "Stripe live secret key detected. This grants full access to payment processing.",
+        "Revoke this key in the Stripe dashboard immediately and use environment variables.",
+        "CWE-798", None, "high"
+    ),
+    (
+        "SEC011", "Database connection string with credentials",
+        r"""(?:mysql|postgres(?:ql)?|mongodb(?:\+srv)?|redis|amqp)://\w+:[^@\s'"]{3,}@""",
+        Severity.HIGH, Category.SECRET,
+        "Database connection string with embedded credentials found in source code.",
+        "Use environment variables for connection strings: os.environ['DATABASE_URL'].",
+        "CWE-798", None, "high"
+    ),
+    (
+        "SEC012", "Hardcoded Bearer/Authorization token",
+        r"""['"](Bearer\s+[A-Za-z0-9\-_.]{20,})['"]""",
+        Severity.HIGH, Category.SECRET,
+        "Hardcoded Bearer token in source code.",
+        "Load authentication tokens from environment variables or a secrets manager.",
+        "CWE-798", None, "medium"
+    ),
+
+    # ── SSRF (Server-Side Request Forgery) ──
+    (
+        "SSRF001", "Potential SSRF via requests library",
+        r"""requests\.(?:get|post|put|delete|patch|head)\s*\(\s*(?:f['"]|.*\+\s*(?:request|req|params|args)|.*\.format\()""",
+        Severity.HIGH, Category.SECURITY,
+        "HTTP request with user-controlled URL may enable Server-Side Request Forgery (SSRF).",
+        "Validate and allowlist target URLs/hosts. Use a URL parser to verify the scheme and host.",
+        "CWE-918", {"python"}, "medium"
+    ),
+    (
+        "SSRF002", "Potential SSRF via fetch/axios",
+        r"""(?:fetch|axios\.(?:get|post|put|delete|patch))\s*\(\s*(?:`.*\$\{|.*\+\s*(?:req\.|request\.|params\.|query\.|body\.))""",
+        Severity.HIGH, Category.SECURITY,
+        "HTTP request constructed from user input may enable SSRF attacks.",
+        "Validate URLs against an allowlist of permitted hosts before making requests.",
+        "CWE-918", {"javascript", "typescript"}, "medium"
+    ),
+
+    # ── Path Traversal ──
+    (
+        "PATH001", "Path traversal via user input",
+        r"""(?:open|Path)\s*\(\s*(?:os\.path\.join\s*\(.*(?:request|req|params|args)|f['"].*(?:request|req|params|args))""",
+        Severity.HIGH, Category.SECURITY,
+        "File operation with user-controlled path may allow directory traversal attacks.",
+        "Use os.path.realpath() and verify the resolved path is within the expected base directory.",
+        "CWE-22", {"python"}, "medium"
+    ),
+    (
+        "PATH002", "Path traversal in Node.js",
+        r"""fs\.(?:readFile|writeFile|readdir|unlink|createReadStream|access)(?:Sync)?\s*\(\s*(?:req\.|request\.|params\.)""",
+        Severity.HIGH, Category.SECURITY,
+        "File system operation with user-controlled path enables path traversal.",
+        "Use path.resolve() and verify the result starts with the intended base directory.",
+        "CWE-22", {"javascript", "typescript"}, "medium"
+    ),
+
+    # ── Open Redirect ──
+    (
+        "REDIR001", "Open redirect in Python web framework",
+        r"""(?:redirect|HttpResponseRedirect|RedirectResponse)\s*\(\s*(?:request\.|req\.|params\[|args\.)""",
+        Severity.MEDIUM, Category.SECURITY,
+        "Redirect using user-controlled input may allow open redirect attacks.",
+        "Validate redirect targets against an allowlist of permitted URLs.",
+        "CWE-601", {"python"}, "medium"
+    ),
+    (
+        "REDIR002", "Open redirect in Express",
+        r"""res\.redirect\s*\(\s*(?:req\.(?:query|params|body)\[|req\.(?:query|params|body)\.)""",
+        Severity.MEDIUM, Category.SECURITY,
+        "Express redirect using user-supplied input enables open redirect.",
+        "Validate redirect URLs against an allowlist of permitted paths or hosts.",
+        "CWE-601", {"javascript", "typescript"}, "medium"
+    ),
+
+    # ── JWT / Authentication ──
+    (
+        "AUTH001", "JWT verification disabled",
+        r"""(?:algorithms?\s*[=:]\s*\[?\s*['"]none['"]|jwt\.decode\s*\(.*(?:verify|options).*(?:False|false))""",
+        Severity.CRITICAL, Category.SECURITY,
+        "JWT verification disabled or 'none' algorithm accepted. Allows forged tokens.",
+        "Always verify JWT signatures. Explicitly specify allowed algorithms: algorithms=['HS256'].",
+        "CWE-347", None, "high"
+    ),
+    (
+        "AUTH002", "Hardcoded JWT secret",
+        r"""jwt\.(?:encode|sign)\s*\(.*['"][^'"]{8,}['"]""",
+        Severity.HIGH, Category.SECRET,
+        "JWT signed with a hardcoded secret key.",
+        "Load the JWT secret from environment variables or a secrets manager.",
+        "CWE-798", None, "medium"
+    ),
+
+    # ── Cryptographic Issues ──
+    (
+        "CRYPTO001", "Weak cipher or ECB mode",
+        r"""(?:DES|RC4|RC2|Blowfish|AES\.MODE_ECB|mode\s*=\s*['"]?ECB|createCipheriv\s*\(\s*['"](?:des|rc4|aes-\d+-ecb))""",
+        Severity.HIGH, Category.SECURITY,
+        "Weak cipher algorithm or insecure ECB block cipher mode detected.",
+        "Use AES-256-GCM or AES-256-CBC with proper IV. Never use DES, RC4, or ECB mode.",
+        "CWE-327", None, "high"
+    ),
+    (
+        "CRYPTO002", "Hardcoded initialization vector",
+        r"""(?:iv|nonce|IV|NONCE)\s*=\s*(?:b['"][^'"]{8,}['"]|bytes\(|b'\\x)""",
+        Severity.HIGH, Category.SECURITY,
+        "Hardcoded initialization vector (IV) makes encryption predictable.",
+        "Generate a random IV for each encryption operation using os.urandom() or crypto.randomBytes().",
+        "CWE-329", None, "medium"
+    ),
+
+    # ── Template Injection (SSTI) ──
+    (
+        "SSTI001", "Server-side template injection",
+        r"""render_template_string\s*\(""",
+        Severity.HIGH, Category.INJECTION,
+        "render_template_string() renders templates from strings, enabling server-side template injection if user input is included.",
+        "Use render_template() with static template files instead of render_template_string().",
+        "CWE-1336", {"python"}, "medium"
+    ),
+
+    # ── React / Frontend XSS ──
+    (
+        "REACT001", "dangerouslySetInnerHTML usage",
+        r"""dangerouslySetInnerHTML""",
+        Severity.MEDIUM, Category.INJECTION,
+        "dangerouslySetInnerHTML bypasses React's built-in XSS protections.",
+        "Sanitize HTML with DOMPurify before using dangerouslySetInnerHTML.",
+        "CWE-79", {"javascript", "typescript"}, "medium"
+    ),
+    (
+        "REACT002", "javascript: URI in href",
+        r"""href\s*=\s*['"]javascript:""",
+        Severity.HIGH, Category.INJECTION,
+        "javascript: URIs in href attributes execute arbitrary code (XSS).",
+        "Validate URLs and reject javascript: protocol. Allow only http: and https: schemes.",
+        "CWE-79", {"javascript", "typescript"}, "high"
+    ),
+    (
+        "JS001", "document.write() usage",
+        r"""document\.write\s*\(""",
+        Severity.MEDIUM, Category.INJECTION,
+        "document.write() can introduce XSS vulnerabilities and blocks page rendering.",
+        "Use DOM APIs (createElement, textContent) instead of document.write().",
+        "CWE-79", {"javascript", "typescript"}, "medium"
+    ),
+
+    # ── Django-Specific ──
+    (
+        "DJANGO001", "Django mark_safe with variable input",
+        r"""mark_safe\s*\(\s*(?:f['"]|.*\+|.*\.format\(|.*%)""",
+        Severity.HIGH, Category.INJECTION,
+        "mark_safe() with dynamic content bypasses Django's auto-escaping, enabling XSS.",
+        "Use format_html() instead of mark_safe() with string formatting.",
+        "CWE-79", {"python"}, "high"
+    ),
+    (
+        "DJANGO002", "Django raw SQL query",
+        r"""(?:\.raw|\.extra|RawSQL)\s*\(\s*(?:f['"]|['"].*\.format\()""",
+        Severity.HIGH, Category.INJECTION,
+        "Django raw SQL query with string formatting enables SQL injection.",
+        "Use Django ORM or pass parameters: Model.objects.raw('SELECT ... WHERE id = %s', [id]).",
+        "CWE-89", {"python"}, "high"
+    ),
+
+    # ── Flask-Specific ──
+    (
+        "FLASK001", "Flask SECRET_KEY hardcoded",
+        r"""(?:app\.secret_key|config\s*\[\s*['"]SECRET_KEY['"]\s*\])\s*=\s*['"][^'"]+['"]""",
+        Severity.CRITICAL, Category.SECRET,
+        "Flask SECRET_KEY is hardcoded. This compromises session security.",
+        "Load SECRET_KEY from environment variable: app.secret_key = os.environ['SECRET_KEY'].",
+        "CWE-798", {"python"}, "high"
+    ),
+    (
+        "FLASK002", "Flask send_file path traversal",
+        r"""send_file\s*\(\s*(?:request\.|os\.path\.join\s*\(.*request\.)""",
+        Severity.HIGH, Category.SECURITY,
+        "send_file() with user-controlled path enables arbitrary file read.",
+        "Use send_from_directory() with a fixed base directory instead.",
+        "CWE-22", {"python"}, "high"
+    ),
+
+    # ── Node.js / Express ──
+    (
+        "JS002", "Command injection via child_process",
+        r"""child_process\.(?:exec|execSync)\s*\(\s*(?:`.*\$\{|.*\+\s*(?:req|request|params|query|body))""",
+        Severity.CRITICAL, Category.INJECTION,
+        "Command executed with user-controlled input enables remote code execution.",
+        "Use execFile/execFileSync with arguments as an array. Never concatenate user input into commands.",
+        "CWE-78", {"javascript", "typescript"}, "high"
+    ),
+    (
+        "JS003", "Node.js TLS verification disabled",
+        r"""(?:NODE_TLS_REJECT_UNAUTHORIZED|rejectUnauthorized)\s*[=:]\s*(?:['"]?0['"]?|false)""",
+        Severity.HIGH, Category.SECURITY,
+        "TLS certificate verification disabled. Enables man-in-the-middle attacks.",
+        "Enable TLS verification. Use proper CA certificates for self-signed certs.",
+        "CWE-295", {"javascript", "typescript"}, "high"
+    ),
+    (
+        "JS004", "Math.random() for security",
+        r"""Math\.random\s*\(\s*\)""",
+        Severity.MEDIUM, Category.SECURITY,
+        "Math.random() is not cryptographically secure and should not be used for security.",
+        "Use crypto.randomUUID(), crypto.getRandomValues(), or crypto.randomBytes().",
+        "CWE-338", {"javascript", "typescript"}, "low"
+    ),
+
+    # ── Python-Specific ──
+    (
+        "PY001", "Insecure temporary file creation",
+        r"""(?:tempfile\.mktemp|os\.tempnam|os\.tmpnam)\s*\(""",
+        Severity.MEDIUM, Category.SECURITY,
+        "Insecure temporary file creation is vulnerable to race condition attacks.",
+        "Use tempfile.mkstemp() or tempfile.NamedTemporaryFile() instead.",
+        "CWE-377", {"python"}, "high"
+    ),
+    (
+        "PY002", "Assert used for security validation",
+        r"""assert\s+.*(?:is_authenticated|is_staff|is_superuser|has_perm|is_admin)""",
+        Severity.HIGH, Category.SECURITY,
+        "assert statements are removed when Python runs with -O flag. Never use for security checks.",
+        "Use if/raise for security: if not user.is_authenticated: raise PermissionError().",
+        "CWE-617", {"python"}, "medium"
+    ),
+    (
+        "PY003", "Unsafe marshal/shelve deserialization",
+        r"""(?:marshal\.loads?|shelve\.open)\s*\(""",
+        Severity.HIGH, Category.INJECTION,
+        "marshal and shelve can execute arbitrary code during deserialization.",
+        "Use json.loads() for untrusted data. Only use marshal/shelve with trusted sources.",
+        "CWE-502", {"python"}, "medium"
+    ),
+
+    # ── Kubernetes / Container Security ──
+    (
+        "K8S001", "Privileged Kubernetes container",
+        r"""privileged\s*:\s*true""",
+        Severity.CRITICAL, Category.CONFIGURATION,
+        "Container running in privileged mode has full host access.",
+        "Remove privileged: true. Use specific capabilities if needed.",
+        "CWE-250", {"yaml"}, "high"
+    ),
+    (
+        "K8S002", "Container running as root in Kubernetes",
+        r"""runAsUser\s*:\s*0\b""",
+        Severity.HIGH, Category.CONFIGURATION,
+        "Kubernetes pod configured to run as root user.",
+        "Set runAsNonRoot: true and specify a non-zero runAsUser in securityContext.",
+        "CWE-250", {"yaml"}, "high"
+    ),
+    (
+        "K8S003", "Kubernetes host namespace sharing",
+        r"""(?:hostNetwork|hostPID|hostIPC)\s*:\s*true""",
+        Severity.HIGH, Category.CONFIGURATION,
+        "Pod shares the host's network/PID/IPC namespace, breaking container isolation.",
+        "Remove hostNetwork/hostPID/hostIPC unless absolutely required.",
+        "CWE-250", {"yaml"}, "high"
+    ),
+
+    # ── Additional Dockerfile Rules ──
+    (
+        "DOC003", "Docker ADD instead of COPY",
+        r"""\bADD\s+(?!https?://)""",
+        Severity.LOW, Category.CONFIGURATION,
+        "ADD instruction used instead of COPY. ADD can auto-extract archives and fetch URLs unexpectedly.",
+        "Use COPY unless you specifically need ADD's tar extraction or URL fetching features.",
+        "", {"dockerfile"}, "medium"
+    ),
+    (
+        "DOC004", "Secret in Docker ARG/ENV",
+        r"""(?:ARG|ENV)\s+(?:\w*(?:PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY|CREDENTIAL)\w*)\b""",
+        Severity.HIGH, Category.SECRET,
+        "Secret passed via ARG or ENV in Dockerfile. ARG values are visible in docker history.",
+        "Use Docker BuildKit secrets (--mount=type=secret) or runtime environment variables.",
+        "CWE-798", {"dockerfile"}, "medium"
+    ),
+    (
+        "DOC005", "Sensitive port exposed in Dockerfile",
+        r"""EXPOSE\s+(?:22|3389|5432|3306|6379|27017|11211)\b""",
+        Severity.MEDIUM, Category.CONFIGURATION,
+        "Sensitive service port (SSH/DB/cache) exposed in Dockerfile.",
+        "Avoid exposing database or management ports. Use Docker networks for inter-service communication.",
+        "CWE-284", {"dockerfile"}, "medium"
+    ),
+
+    # ── Additional IaC Rules ──
+    (
+        "IAC003", "Publicly accessible RDS instance",
+        r"""publicly_accessible\s*=\s*true""",
+        Severity.HIGH, Category.CONFIGURATION,
+        "RDS database instance is publicly accessible from the internet.",
+        "Set publicly_accessible = false and use private subnets with VPN/bastion access.",
+        "CWE-284", {"terraform"}, "high"
+    ),
+
+    # ── Environment / Logging ──
+    (
+        "ENV001", "Environment variable leaked in logs",
+        r"""(?:console\.log|print|logger?\.(?:info|debug|warn|error)|logging\.)\s*\(.*(?:os\.environ|process\.env)""",
+        Severity.MEDIUM, Category.SECRET,
+        "Environment variable value written to logs may leak secrets.",
+        "Never log raw environment variable values. Mask sensitive values before logging.",
+        "CWE-532", None, "low"
+    ),
+
+    # ── Mass Assignment ──
+    (
+        "API001", "Potential mass assignment",
+        r"""(?:\.create|\.update|\.findOneAndUpdate|\.updateOne)\s*\(\s*(?:req\.body|request\.(?:data|json))""",
+        Severity.MEDIUM, Category.SECURITY,
+        "Directly passing request body to database operations may allow mass assignment.",
+        "Explicitly pick allowed fields. Use serializer validation or an allowlist.",
+        "CWE-915", {"javascript", "typescript", "python"}, "medium"
     ),
 ]
 

@@ -1,0 +1,68 @@
+# Example: codespy Security Scan for Pull Requests and Pushes
+#
+# Copy this workflow into your repository at .github/workflows/security-scan.yml
+# to enable automatic security scanning with codespy.
+#
+# For more information, see: https://github.com/wisent-ai/codespy
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write       # Required for posting PR comments
+  security-events: write     # Required for SARIF upload to Security tab
+
+jobs:
+  # ── Basic scan: scans changed files, posts PR comment ──────────────────────
+  security-scan:
+    name: codespy Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for changed-file detection
+
+      - name: Run codespy
+        id: scan
+        uses: wisent-ai/codespy@v1
+        with:
+          severity-threshold: high      # Report high and critical findings
+          scan-changed-only: 'true'     # Only scan files changed in this PR
+          post-comment: 'true'          # Post results as a PR comment
+          fail-on-findings: 'true'      # Fail if high/critical findings exist
+          show-fixes: 'true'            # Include suggested fixes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: use scan outputs in subsequent steps
+      - name: Check score
+        if: always()
+        run: |
+          echo "Security Score: ${{ steps.scan.outputs.security-score }}/100 (${{ steps.scan.outputs.security-grade }})"
+          echo "Findings: ${{ steps.scan.outputs.total-findings }} total"
+          echo "  Critical: ${{ steps.scan.outputs.critical-count }}"
+          echo "  High: ${{ steps.scan.outputs.high-count }}"
+
+  # ── Advanced: full scan with SARIF upload to GitHub Security tab ───────────
+  # Uncomment the job below to enable SARIF integration with the Security tab.
+  #
+  # full-scan-with-sarif:
+  #   name: Full Security Scan (SARIF)
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'push'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Run codespy (full scan)
+  #       uses: wisent-ai/codespy@v1
+  #       with:
+  #         severity-threshold: low       # Report everything
+  #         scan-changed-only: 'false'    # Scan the entire repo
+  #         sarif-upload: 'true'          # Upload results to Security tab
+  #         fail-on-findings: 'false'     # Don't fail; just report

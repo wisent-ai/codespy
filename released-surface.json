@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "source": "git tag v1 (69f49ae3897dc3ea3c8aec5dd678841ad2d9d690), extracted with git archive and read by scripts/surface.py. codespy is not on PyPI and has no packaging metadata; it is published as a GitHub Action, and every example in the README consumes it as wisent-ai/codespy@v1. That tag is the artifact callers actually get, and its codespy.py declares __version__ = \"1.1.0\". The tag literally named v1.1.0 points at the earlier 239f664, whose codespy.py still declares 1.0.0, so it is mislabelled and is not the baseline.",
+  "source": "git-archive:v1 reproduced with `git archive v1` and read by scripts/surface.py. PyPI serves no project named codespy at all, and codespy ships no packaging metadata, so no sdist or wheel exists to prefer; it does not ship through Stado either. It is published as a GitHub Action, and every README example consumes wisent-ai/codespy@v1, so this tag is the artifact callers actually get, and its codespy.py declares 1.1.0. Note the tag literally named v1.1.0 points at the earlier 239f664, whose codespy.py still declares 1.0.0; it is mislabelled and is not the baseline.",
   "surface": [
     "category:configuration",
     "category:injection",

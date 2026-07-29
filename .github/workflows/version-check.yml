@@ -68,55 +68,115 @@ jobs:
             echo "Declared version matches the $change change."
           fi
 
-      - name: Refuse a baseline nobody can install
+      - name: Refuse a baseline that misstates where it came from
         if: github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
-          # released-surface.json must describe a *published* version. If it names one
-          # that cannot be fetched, the baseline was hand-edited and every later
-          # comparison is measured against something nobody can install.
+          # released-surface.json is the yardstick every later comparison is measured
+          # against, so it must say truthfully where it came from. The check runs both
+          # ways, because both lies are equally destructive:
           #
-          # codespy is distributed as a GitHub Action, not on PyPI, so the artifact to
-          # check for is the git tag the README tells people to use. The baseline's own
-          # "source" field says where it came from, and that decides which check
-          # applies — a baseline recovered from HEAD is not published at all and must
-          # never be allowed to pass as one.
+          #   claims published, is not  -> the baseline was hand-edited and nobody can
+          #                                reproduce it
+          #   is published, claims less -> a real artifact exists and was ignored, so
+          #                                the yardstick is not what users have
+          #
+          # The two files are coupled by a provenance marker, not by prose a reword
+          # could silently break: the marker is the first whitespace-delimited token of
+          # "source", everything after the first space is prose for humans, and
+          # scripts/baseline.py is the only thing that writes it. Tiers, best first:
+          # pypi-sdist, pypi-wheel, stado, git-archive, head.
           released="$(jq -r .version released-surface.json)"
-          origin="$(jq -r .source released-surface.json)"
-          case "$origin" in
-            *PyPI*sdist*|*"published on PyPI"*)
-              if ! curl -sSf "https://pypi.org/pypi/codespy/$released/json" >/dev/null; then
-                echo "::error::released-surface.json names $released, which is not on PyPI."
-                false
-              fi
-              echo "Baseline $released exists on PyPI."
+          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
+          echo "baseline $released via marker '$marker'"
+
+          case "$marker" in
+            pypi-*) claims_registry=yes ;;
+            stado:*|git-archive:*|head:*) claims_registry=no ;;
+            *)
+              echo "::error::unknown baseline marker: $marker. Run scripts/baseline.py."
+              false
               ;;
-            *"git tag "*)
-              # checkout is shallow and tagless by default; the tagged blob is the
-              # whole point of this step, so pull the history that holds it.
-              if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-                git fetch --tags --force --unshallow
-              else
-                git fetch --tags --force
-              fi
-              rest="${origin#*git tag }"
-              tag="${rest%% *}"
+          esac
+
+          # Forward: a marker that claims the index must be served that exact version.
+          # Reverse: a marker that claims no index must face an index serving nothing,
+          # because a real release the baseline is dodging outranks every lower tier.
+          if [ "$claims_registry" = yes ]; then
+            if ! curl -sSf "https://pypi.org/pypi/codespy/$released/json" >/dev/null; then
+              echo "::error::baseline claims $marker, but PyPI does not serve codespy" \
+                "$released. Run scripts/baseline.py."
+              false
+            fi
+            echo "PyPI serves codespy $released, as $marker claims."
+          else
+            if curl -sSf "https://pypi.org/pypi/codespy/json" >/dev/null; then
+              echo "::error::baseline claims $marker, which asserts nothing is published," \
+                "but PyPI serves codespy. Run scripts/baseline.py."
+              false
+            fi
+            echo "PyPI serves no codespy project, as $marker claims."
+          fi
+
+          # The tagged blob is the point of the two branches below, and checkout is
+          # shallow and tagless by default.
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --tags --force --unshallow
+          else
+            git fetch --tags --force
+          fi
+
+          # The newest version any tag actually carries. A baseline older than this is
+          # stale no matter which tier it names, and the ordering question goes to the
+          # shared rule rather than being reinvented in shell.
+          newest_tag=""
+          newest_version=""
+          for candidate in $(git tag -l); do
+            there="$(git show "$candidate:codespy.py" \
+              | awk -F'"' '/^__version__/{print $2; exit}')" || continue
+            if [ -z "$there" ]; then
+              continue
+            fi
+            if [ -z "$newest_version" ] || [ "$(autoversion order --older "$newest_version" \
+                 --newer "$there" --json | jq -r .is_newer)" = "True" ]; then
+              newest_tag="$candidate"
+              newest_version="$there"
+            fi
+          done
+
+          case "$marker" in
+            git-archive:*)
+              tag="${marker#git-archive:}"
               if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
-                echo "::error::released-surface.json was recovered from git tag $tag," \
-                  "which this repository does not have."
+                echo "::error::baseline claims git tag $tag, which this repository does" \
+                  "not have. Run scripts/baseline.py."
                 false
               fi
               tagged="$(git show "$tag:codespy.py" | awk -F'"' '/^__version__/{print $2; exit}')"
               if [ "$tagged" != "$released" ]; then
                 echo "::error::git tag $tag declares $tagged, not $released, so the" \
-                  "baseline is measured against an artifact that is not that version."
+                  "baseline is measured against an artifact that is not that version." \
+                  "Run scripts/baseline.py."
                 false
               fi
               echo "Baseline $released is the artifact at git tag $tag."
               ;;
-            *)
-              echo "::error::released-surface.json does not name a published artifact:" \
-                "$origin"
-              false
+            head:*)
+              if [ -n "$newest_tag" ]; then
+                echo "::error::baseline claims $marker, but git tag $newest_tag carries" \
+                  "$newest_version and is the artifact callers get. head is the last" \
+                  "resort only. Run scripts/baseline.py."
+                false
+              fi
+              echo "Baseline $released is HEAD; no tag and no release exist, as claimed."
               ;;
           esac
+
+          if [ -n "$newest_version" ] && [ "$newest_version" != "$released" ] \
+             && [ "$(autoversion order --older "$released" --newer "$newest_version" \
+                    --json | jq -r .is_newer)" = "True" ]; then
+            echo "::error::git tag $newest_tag carries $newest_version, which is newer" \
+              "than the baseline $released. Every comparison is being measured against a" \
+              "superseded artifact. Run scripts/baseline.py."
+            false
+          fi

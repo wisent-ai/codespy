@@ -1,0 +1,122 @@
+name: Version check
+
+# Refuse a change whose declared version disagrees with what it did to the public
+# contract. The contract of this tool is what a caller can observe: the rule ids it
+# stamps findings with, the categories and severities it reports, the files it agrees
+# to open, its output formats and its command line. Retiring a rule id silently stops
+# failing a build that relied on it; that is a breaking change no matter how small the
+# diff looks.
+#
+# The rule itself lives in one place for the whole fleet and is not copied here:
+# https://github.com/lbartoszcze/AutoVersion. This workflow supplies only the two
+# things this repository alone knows: its surface, and the version it declares.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the shared rule
+        run: pip install --quiet "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
+
+      - name: Read the public surface
+        # No dependencies: the surface is read out of codespy.py with ast, so this
+        # stays cheap and never runs the scanner. A module that does not parse fails
+        # the step rather than silently shrinking the surface.
+        run: python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json"
+
+      - name: Compare against the released contract
+        run: |
+          set -euo pipefail
+          released="$(jq -r .version released-surface.json)"
+          declared="$(awk -F'"' '/^__version__/{print $2; exit}' codespy.py)"
+          echo "released: $released"
+          echo "declared: $declared"
+
+          verdict="$(autoversion decide \
+            --current "$released" \
+            --published-surface released-surface.json \
+            --candidate-surface "$RUNNER_TEMP/candidate.json" \
+            --json)"
+          echo "$verdict"
+
+          change="$(printf '%s' "$verdict" | jq -r .change)"
+          required="$(printf '%s' "$verdict" | jq -r .next)"
+
+          if [ "$declared" = "$released" ]; then
+            if [ "$change" != "internal" ]; then
+              echo "::error::The public contract changed ($change) but codespy.py still" \
+                "declares the released version $released. The next version must be $required."
+              false
+            fi
+            echo "Nothing new released and the contract is unchanged."
+          elif [ "$declared" != "$required" ]; then
+            echo "::error::codespy.py declares $declared, but a $change change to" \
+              "$released requires $required."
+            false
+          else
+            echo "Declared version matches the $change change."
+          fi
+
+      - name: Refuse a baseline nobody can install
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          # released-surface.json must describe a *published* version. If it names one
+          # that cannot be fetched, the baseline was hand-edited and every later
+          # comparison is measured against something nobody can install.
+          #
+          # codespy is distributed as a GitHub Action, not on PyPI, so the artifact to
+          # check for is the git tag the README tells people to use. The baseline's own
+          # "source" field says where it came from, and that decides which check
+          # applies — a baseline recovered from HEAD is not published at all and must
+          # never be allowed to pass as one.
+          released="$(jq -r .version released-surface.json)"
+          origin="$(jq -r .source released-surface.json)"
+          case "$origin" in
+            *PyPI*sdist*|*"published on PyPI"*)
+              if ! curl -sSf "https://pypi.org/pypi/codespy/$released/json" >/dev/null; then
+                echo "::error::released-surface.json names $released, which is not on PyPI."
+                false
+              fi
+              echo "Baseline $released exists on PyPI."
+              ;;
+            *"git tag "*)
+              # checkout is shallow and tagless by default; the tagged blob is the
+              # whole point of this step, so pull the history that holds it.
+              if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+                git fetch --tags --force --unshallow
+              else
+                git fetch --tags --force
+              fi
+              rest="${origin#*git tag }"
+              tag="${rest%% *}"
+              if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+                echo "::error::released-surface.json was recovered from git tag $tag," \
+                  "which this repository does not have."
+                false
+              fi
+              tagged="$(git show "$tag:codespy.py" | awk -F'"' '/^__version__/{print $2; exit}')"
+              if [ "$tagged" != "$released" ]; then
+                echo "::error::git tag $tag declares $tagged, not $released, so the" \
+                  "baseline is measured against an artifact that is not that version."
+                false
+              fi
+              echo "Baseline $released is the artifact at git tag $tag."
+              ;;
+            *)
+              echo "::error::released-surface.json does not name a published artifact:" \
+                "$origin"
+              false
+              ;;
+          esac

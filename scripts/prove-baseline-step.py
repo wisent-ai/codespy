@@ -21,6 +21,7 @@ import json
 import pathlib
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 
@@ -57,21 +58,36 @@ def run_against(
     body: str,
     source: str | None,
     newer_tag: tuple | None = None,
+    resign_tag: str | None = None,
 ) -> tuple:
     """Exit status and output of the step, with "source" optionally rewritten.
 
-    The clone supplies git history — tags are what three branches inspect — but the
+    The clone supplies git history — tags are what four branches inspect — but the
     baseline comes from the working tree, so an uncommitted change is what gets tested
-    rather than whatever HEAD still says.
+    rather than whatever HEAD still says. Every fixture lives and dies in the clone; the
+    real repository's tags are never touched and nothing is pushed.
 
     `newer_tag` is `(name, version)`: it commits a codespy.py declaring that version and
     tags it, so the staleness branch has a superseding release to notice.
+
+    `resign_tag` moves an existing tag onto HEAD, which already declares the baseline
+    version. That makes a previously mis-signed full-version name trustworthy, so it
+    outranks the alias the baseline names — the case tier-prefix comparison waves through
+    and whole-marker comparison catches.
     """
-    clone = pathlib.Path(tempfile.mkdtemp()) / "clone"
-    subprocess.run(["git", "clone", "--quiet", str(repo), str(clone)], check=True)
+    # Two levels on purpose. The step under test runs `git fetch --tags --force`, which
+    # is right — it trusts the remote — but it means a tag fixture applied only to the
+    # working clone is silently reset from origin. So the fixtures land in a stand-in
+    # origin cloned from the real repository, and the working clone is taken from that.
+    # The real repository's tags are never touched and nothing is ever pushed to it.
+    scratch = pathlib.Path(tempfile.mkdtemp())
+    origin = scratch / "origin"
+    clone = scratch / "clone"
+    subprocess.run(["git", "clone", "--quiet", str(repo), str(origin)], check=True)
+
     if newer_tag is not None:
         name, version = newer_tag
-        module = clone / "codespy.py"
+        module = origin / "codespy.py"
         module.write_text(
             re.sub(
                 r'^__version__ = ".*"$',
@@ -85,7 +101,20 @@ def run_against(
             ["git", "-c", "user.email=p@p", "-c", "user.name=prover", "commit", "-qam", name],
             ["git", "tag", name],
         ):
-            subprocess.run(command, cwd=clone, check=True)
+            subprocess.run(command, cwd=origin, check=True)
+    if resign_tag is not None:
+        subprocess.run(
+            ["git", "tag", "-f", resign_tag, "HEAD"],
+            cwd=origin,
+            check=True,
+            capture_output=True,
+        )
+
+    subprocess.run(["git", "clone", "--quiet", str(origin), str(clone)], check=True)
+    # The step shells out to scripts/baseline.py for its tier check, and the clone only
+    # has whatever is committed. Copy the working tree's scripts in so what gets proven
+    # is what is about to be committed.
+    shutil.copytree(repo / "scripts", clone / "scripts", dirs_exist_ok=True)
     document = json.loads((repo / BASELINE).read_text())
     if source is not None:
         document["source"] = source
@@ -102,11 +131,12 @@ def main(argv: list) -> int:
     published = json.loads((repo / BASELINE).read_text())["version"]
 
     cases = [
-        ("the working-tree baseline", None, int(False), None),
+        ("the working-tree baseline", None, int(False), None, None),
         (
             "git-archive naming a tag that does not exist",
             "git-archive:v9.9.9 invented",
             int(True),
+            None,
             None,
         ),
         (
@@ -114,11 +144,13 @@ def main(argv: list) -> int:
             "git-archive:v1.1.0 the tag that declares 1.0.0",
             int(True),
             None,
+            None,
         ),
         (
             "head while a tag carries a version",
             f"head:{'0' * len('0123456789abcdef0123456789abcdef01234567')} invented",
             int(True),
+            None,
             None,
         ),
         (
@@ -126,12 +158,14 @@ def main(argv: list) -> int:
             "pypi-sdist:codespy-1.1.0.tar.gz invented",
             int(True),
             None,
+            None,
         ),
-        ("marker outside the grammar", "recovered from somewhere", int(True), None),
+        ("marker outside the grammar", "recovered from somewhere", int(True), None, None),
         (
             "prose-only source with no marker token",
             "sdist published on PyPI",
             int(True),
+            None,
             None,
         ),
         (
@@ -139,18 +173,27 @@ def main(argv: list) -> int:
             None,
             int(True),
             ("v2.0.0", "2.0.0"),
+            None,
+        ),
+        (
+            "a better-named tag for the same version",
+            None,
+            int(True),
+            None,
+            "v1.1.0",
         ),
     ]
 
     failures = []
-    for label, source, expected, newer_tag in cases:
-        status, output = run_against(repo, body, source, newer_tag)
+    for label, source, expected, newer_tag, resign_tag in cases:
+        status, output = run_against(repo, body, source, newer_tag, resign_tag)
         verdict = "ok" if status == expected else "UNEXPECTED"
         if status != expected:
             failures.append(label)
         print(f"-- {label}: exit={status} expected={expected} [{verdict}]")
+        shown = ("::error::", "Baseline", "PyPI serves")
         for line in output.splitlines():
-            if line.startswith("::error::") or line.startswith("Baseline"):
+            if line.startswith(shown):
                 print(f"   {line}")
     print()
     print(f"baseline version under test: {published}")

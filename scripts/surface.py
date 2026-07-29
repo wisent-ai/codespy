@@ -1,9 +1,9 @@
 """Print this tool's public surface: what a codespy user would notice disappearing.
 
-codespy is a single-file scanner, not a library. It has no `__all__` and nobody
-imports it, so its Python symbols are not the contract — its *observable behaviour*
-is. Seven things are observable, and each one is something a caller has written down
-somewhere outside this repository:
+codespy is a single-file scanner published as a GitHub Action, not a library. It has no
+`__all__` and nobody imports it, so its Python symbols are not the contract — its
+*observable behaviour* is. Nine things are observable, and each one is something a
+caller has written down somewhere outside this repository:
 
     rule:SEC001       the identifier in JSON `rule_id` and SARIF `ruleId`. Suppression
                       lists, baseline files and dashboards key on these strings. A
@@ -23,6 +23,18 @@ somewhere outside this repository:
     format:sarif      a `--format` choice. Removing one breaks whoever pipes it.
     cli:--no-color    every option string and positional of the CLI, which is the
                       whole command vocabulary a script can invoke.
+    action-input:severity     a declared input of action.yml. This is the primary
+                      distribution channel: there is no package on any index, and every
+                      README example is `uses: wisent-ai/codespy@v1`, so what callers
+                      actually write is a `with:` block. The input names differ from the
+                      CLI spellings they forward to — `output-file` against `--output`,
+                      `fail-on-findings` against no flag at all — so the CLI list does
+                      not cover them and cannot.
+    action-output:security-score
+                      a declared output of action.yml, named in a caller's
+                      `steps.<id>.outputs.<name>`. Deleting one silently yields the
+                      empty string in someone else's workflow expression rather than
+                      failing, which is the quietest break in this whole list.
 
 Not included: the regexes, the fix suggestions, the CWE ids and the per-rule language
 scoping. Those change what a rule *finds*, and a scanner is expected to get better at
@@ -54,6 +66,10 @@ import pathlib
 import sys
 
 MODULE = "codespy.py"
+ACTION = "action.yml"
+
+# The two mappings of action.yml whose keys callers write in their own workflows.
+ACTION_SECTIONS = ("inputs", "outputs")
 
 # The layout of a RULES entry, from the comment above the table. Field names stand in
 # for positions so that this file carries no bare offsets to drift out of date.
@@ -265,6 +281,59 @@ def cli_vocabulary(tree: ast.Module, source: pathlib.Path) -> tuple:
     return sorted(names), sorted(formats)
 
 
+def manifest_keys(manifest: pathlib.Path, section: str) -> list:
+    """Immediate keys of one top-level mapping of action.yml.
+
+    Deliberately not a YAML parser and deliberately not PyYAML. The surface must be
+    readable with nothing installed — a release decision that needs a dependency is a
+    release decision that stops working on some machine — and the two sections this
+    cares about are flat mappings of plain names. So the shape is asserted instead of
+    interpreted: a top-level `section:`, then its immediate children, one indent deeper,
+    each a bare `name:`. Anything else raises, because a silently short list of input
+    names would read to the versioning rule as inputs a caller can no longer pass.
+    """
+    try:
+        lines = manifest.read_text().splitlines()
+    except OSError as error:
+        raise SystemExit(f"{manifest}: {error}") from error
+
+    opener = f"{section}:"
+    starts = [index for index, line in enumerate(lines) if line == opener]
+    if not starts:
+        raise SystemExit(
+            f"{manifest}: no top-level `{opener}`. This manifest is how callers address "
+            f"the action, so refusing rather than reporting no {section}"
+        )
+    if len(starts) > len(("once",)):
+        raise SystemExit(f"{manifest}: `{opener}` appears more than once")
+
+    body = lines[starts.pop() + int(True) :]
+    depth = None
+    keys = []
+    for line in body:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == int(False):
+            break
+        if "\t" in line[:indent]:
+            raise SystemExit(f"{manifest}: tab indentation in `{section}`, refusing to guess")
+        if depth is None:
+            depth = indent
+        if indent != depth:
+            continue
+        name, separator, _ = line.strip().partition(":")
+        if not separator:
+            raise SystemExit(
+                f"{manifest}: `{line.strip()}` under `{section}` is not a `name:` entry, "
+                "so the manifest is not the flat mapping this reader asserts"
+            )
+        keys.append(name.strip().strip("'\""))
+    if not keys:
+        raise SystemExit(f"{manifest}: `{opener}` is empty")
+    return keys
+
+
 def surface(root: pathlib.Path) -> list:
     """Everything a caller of this tool can observe, namespaced and sorted."""
     source = root / MODULE
@@ -278,6 +347,16 @@ def surface(root: pathlib.Path) -> list:
     languages, suffixes = scanned_paths(tree, source)
     cli, formats = cli_vocabulary(tree, source)
 
+    manifest = root / ACTION
+    if not manifest.is_file():
+        raise SystemExit(
+            f"{manifest} does not exist. The action manifest is how callers address this "
+            "tool, so its inputs and outputs are part of the contract; without it the "
+            "surface would be short by every name a `with:` block writes, and the "
+            "versioning rule would read that as removed capability"
+        )
+    inputs, outputs = (manifest_keys(manifest, section) for section in ACTION_SECTIONS)
+
     groups = {
         "rule": rule_ids(entries, source),
         "category": used_categories(entries, categories, source),
@@ -286,6 +365,8 @@ def surface(root: pathlib.Path) -> list:
         "ext": suffixes,
         "format": formats,
         "cli": cli,
+        "action-input": inputs,
+        "action-output": outputs,
     }
     return sorted({f"{prefix}:{name}" for prefix, names in groups.items() for name in names})
 

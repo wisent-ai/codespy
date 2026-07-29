@@ -180,3 +180,37 @@ jobs:
               "superseded artifact. Run scripts/baseline.py."
             false
           fi
+
+          # Being honest about your tier is not the same as being on the right one. A
+          # release or a tag can appear after the baseline was generated, and from then
+          # on the baseline stays perfectly truthful while a better artifact sits unused.
+          # So ask the generator which artifact is reachable right now and compare.
+          #
+          # Compare the WHOLE marker on every tier except head, and the tier alone on
+          # head. A head: marker carries a sha that moves with every commit, so full
+          # equality there would demand a regeneration per commit forever; every other
+          # tier names its artifact exactly, by filename or by tag, and those do not
+          # move, so full equality is safe and strictly tighter. Tier-prefix alone would
+          # wave through the right KIND of artifact while the wrong one is named — an
+          # older sdist beside a newer release, or a tag outranked by a better tag.
+          #
+          # Only the marker is read from this. The regenerated surface must never reach
+          # the decision: recomputing both sides at check time is the one shape that
+          # structurally cannot refuse, and --stdout exists so the committed baseline is
+          # never rewritten here. Do not "simplify" this into feeding the decision.
+          best="$(python3 scripts/baseline.py --stdout \
+            | jq -r '.source | split(" ") | first')"
+          if [ "${marker%%:*}" = head ]; then
+            want="${best%%:*}"
+            have="${marker%%:*}"
+          else
+            want="$best"
+            have="$marker"
+          fi
+          if [ "$want" != "$have" ]; then
+            echo "::error::the baseline names '$have' but '$want' is reachable now, so a" \
+              "better artifact exists than the one every comparison is measured against." \
+              "Run scripts/baseline.py."
+            false
+          fi
+          echo "Baseline artifact '$have' is still the best reachable."

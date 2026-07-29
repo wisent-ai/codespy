@@ -182,8 +182,15 @@ def from_git_tag(root: pathlib.Path) -> tuple | None:
     version whose tree declares something else is mis-signed: it is reported and skipped
     rather than filed under the version its name claims, because trusting the name would
     measure every later change against a tree that is not that release.
+
+    Two trustworthy tags can name the same version — an alias like `v1` beside the
+    `v1.1.0` it points at. The choice between them must be deterministic, or the tier
+    check downstream flaps between two equally valid markers on consecutive runs. So the
+    tie goes to the name that identifies the artifact most precisely: a full-version name
+    is fixed, while an alias is expected to move, and comparing markers is only
+    meaningful against a name that does not move. Remaining ties break by sorted name.
     """
-    tags = [t for t in git(root, "tag", "-l").splitlines() if t]
+    tags = sorted(t for t in git(root, "tag", "-l").splitlines() if t)
     best_tag, best_version = None, None
     for tag in tags:
         try:
@@ -200,6 +207,9 @@ def from_git_tag(root: pathlib.Path) -> tuple | None:
             continue
         if best_version is None or newer(best_version, version):
             best_tag, best_version = tag, version
+        elif version == best_version and tag_claims_full_version(tag) \
+                and not tag_claims_full_version(best_tag):
+            best_tag = tag
     if best_tag is None:
         return None
     unpacked = pathlib.Path(tempfile.mkdtemp())
@@ -263,6 +273,13 @@ def main(argv: list) -> int:
         "surface": names,
     }
     rendered = json.dumps(document, indent=INDENT) + "\n"
+    if "--stdout" in argv:
+        # For the workflow's tier check: it needs to know which tier is reachable now
+        # without the committed baseline being touched. Only the marker may be read from
+        # this; letting the regenerated *surface* reach the decision would recompute both
+        # sides at check time, which is the one shape that structurally cannot refuse.
+        sys.stdout.write(rendered)
+        return int(False)
     if "--dry-run" in argv:
         print(f"{marker}  version={version}  names={len(names)}")
         return int(False)

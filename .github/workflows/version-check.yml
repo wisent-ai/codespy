@@ -26,6 +26,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Make tags and history visible
+        # actions/checkout fetches one commit and no tags. Every later read of a ref is
+        # blind without this, and blind is worse than absent here: the tier probe would
+        # find no tags, conclude the weaker tier is still the best available, and pass —
+        # green on a laptop that happens to have refs, asleep on the runner. Unshallowing
+        # matters separately from tag visibility, because `git archive <tag>` needs the
+        # tag's tree, which a depth-one clone does not have.
+        #
+        # `--unshallow` is fatal on an already complete repository. Asking first, rather
+        # than falling back through `||`, keeps a misleading "fatal:" out of the log.
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --force --tags --unshallow
+          else
+            git fetch --force --tags
+          fi
+          echo "tags visible: $(git tag -l | tr '\n' ' ')"
+
       - name: Install the shared rule
         run: pip install --quiet "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
 
@@ -102,6 +121,13 @@ jobs:
           # Forward: a marker that claims the index must be served that exact version.
           # Reverse: a marker that claims no index must face an index serving nothing,
           # because a real release the baseline is dodging outranks every lower tier.
+          #
+          # The reverse direction reads absence from a FAILED request, and curl fails
+          # identically for "not found", "no egress", "DNS broke" and "PyPI is down". So
+          # absence is only meaningful after a positive control proves the index is
+          # reachable at all — otherwise the step concludes "nothing is published"
+          # precisely when it learned nothing, and the wrong answer is the passing one.
+          # Control first, assertion second.
           if [ "$claims_registry" = yes ]; then
             if ! curl -sSf "https://pypi.org/pypi/codespy/$released/json" >/dev/null; then
               echo "::error::baseline claims $marker, but PyPI does not serve codespy" \
@@ -110,6 +136,11 @@ jobs:
             fi
             echo "PyPI serves codespy $released, as $marker claims."
           else
+            if ! curl -sSf "https://pypi.org/pypi/pip/json" >/dev/null; then
+              echo "::error::cannot reach PyPI, so the absence of codespy is unproven." \
+                "Refusing rather than assuming it is unpublished."
+              false
+            fi
             if curl -sSf "https://pypi.org/pypi/codespy/json" >/dev/null; then
               echo "::error::baseline claims $marker, which asserts nothing is published," \
                 "but PyPI serves codespy. Run scripts/baseline.py."
@@ -118,13 +149,8 @@ jobs:
             echo "PyPI serves no codespy project, as $marker claims."
           fi
 
-          # The tagged blob is the point of the two branches below, and checkout is
-          # shallow and tagless by default.
-          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-            git fetch --tags --force --unshallow
-          else
-            git fetch --tags --force
-          fi
+          # Tags and full history were made visible in a step of their own after
+          # checkout, which the branches below depend on.
 
           # The newest version any tag actually carries. A baseline older than this is
           # stale no matter which tier it names, and the ordering question goes to the

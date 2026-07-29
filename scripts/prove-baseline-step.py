@@ -64,7 +64,7 @@ def run_against(
     newer_tag: tuple | None = None,
     resign_tag: str | None = None,
     shallow: bool = False,
-    offline_registry: bool = False,
+    registry: str | None = None,
 ) -> tuple:
     """Exit status and output of the step, with "source" optionally rewritten.
 
@@ -85,6 +85,11 @@ def run_against(
     that consults a tag is blind under those conditions unless the step fetches first, and
     a tier probe that finds no tags concludes the weaker tier is still best and passes —
     green locally, green in CI, and asleep. This asserts the step is not that.
+
+    `registry` makes the index misbehave: "silent" for a transport that answers nothing,
+    "throttle" for one that answers successfully with something that is not an answer
+    about this project. The second is the one a reachability control cannot catch, since
+    the request genuinely succeeded.
     """
     # Two levels on purpose. The step under test runs `git fetch --tags --force`, which
     # is right — it trusts the remote — but it means a tag fixture applied only to the
@@ -135,17 +140,29 @@ def run_against(
         document["source"] = source
     (clone / BASELINE).write_text(json.dumps(document, indent=int(True) + int(True)))
     env = dict(os.environ)
-    if offline_registry:
-        # Shadow curl with a stub that always fails, which is what no egress, a DNS
-        # failure and a registry outage all look like from inside the step. The point is
-        # that "not found" is indistinguishable from them, so absence read off a failed
-        # request is not absence at all.
+    if registry is not None:
+        # Two transports have to be broken, not one. This step speaks curl, but its tier
+        # probe shells out to scripts/baseline.py, which speaks urllib — so a curl-only
+        # stub leaves the probe on the real network and a "verified fail-closed" claim is
+        # itself a false positive. The proxy variables cover urllib; the stub covers curl
+        # and decides what curl appears to say.
         stub = clone / "stub"
         stub.mkdir()
+        script = {
+            # No egress, DNS failure, outage: curl fails and says nothing.
+            "silent": "#!/bin/sh\nexit {code}\n",
+            # Reachable index answering with something that is not an answer about us —
+            # a throttle or permission page. Exit status is success, so any reachability
+            # control waves it straight through. This is the case content-reading catches.
+            "throttle": "#!/bin/sh\necho '<html>too many requests</html>'\nexit {zero}\n",
+        }[registry]
         curl = stub / "curl"
-        curl.write_text("#!/bin/sh\nexit 1\n".replace("1", str(int(True))))
+        curl.write_text(script.format(code=int(True), zero=int(False)))
         curl.chmod(int("755", len("01234567") + int(True)))
         env["PATH"] = f"{stub}:{env['PATH']}"
+        dead = "http://127.0.0.1:{}".format(len("port-number-that-nothing-listens-on!"))
+        env["http_proxy"] = env["https_proxy"] = dead
+        env["HTTP_PROXY"] = env["HTTPS_PROXY"] = dead
     finished = subprocess.run(
         ["bash", "-c", body], cwd=clone, capture_output=True, text=True, env=env
     )
@@ -218,13 +235,18 @@ def main(argv: list) -> int:
             "shallow": True,
             "expect": int(True),
         },
-        # Absence is read off a failed request, so it means nothing until the index is
-        # known reachable. Without the positive control this case passes, and it is the
-        # one defect here that is wrong on every network hiccup rather than only once a
-        # better artifact appears.
+        # Absence is the passing answer, so every way of learning nothing must refuse.
+        # "silent" is the transport failure an exit-status check reads as absence.
+        # "throttle" is the one a reachability control cannot catch, because the request
+        # genuinely succeeds — only reading what the index says rules it out.
         {
-            "label": "registry unreachable, so absence is unproven",
-            "offline_registry": True,
+            "label": "registry silent, so absence is unproven",
+            "registry": "silent",
+            "expect": int(True),
+        },
+        {
+            "label": "registry answers but not about us, so absence is unproven",
+            "registry": "throttle",
             "expect": int(True),
         },
     ]
@@ -238,7 +260,7 @@ def main(argv: list) -> int:
         if status != expected:
             failures.append(label)
         print(f"-- {label}: exit={status} expected={expected} [{verdict}]")
-        shown = ("::error::", "Baseline", "PyPI serves")
+        shown = ("::error::", "Baseline", "PyPI ")
         for line in output.splitlines():
             if line.startswith(shown):
                 print(f"   {line}")

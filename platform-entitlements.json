@@ -1,0 +1,11 @@
+{
+  "schema": "wisent.product-entitlements.current",
+  "product": "codespy",
+  "organization_id": "WISENT_ORGANIZATION_ID",
+  "principal_id": "authenticated repository maintainer identity",
+  "community": ["codespy.local"],
+  "managed": ["codespy.organization-scanning", "codespy.retained-evidence"],
+  "managed_failure": "continuous scanning, organization policy, and retained evidence fail closed",
+  "community_failure": "the complete offline scanner and rules remain available",
+  "billing_unit": "active repository"
+}

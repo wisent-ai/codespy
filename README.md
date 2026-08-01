@@ -1,10 +1,17 @@
 # codespy
 
+<!-- wisent-readme-signals:start -->
+[![CI](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/wisent-ai/codespy?display_name=tag&sort=semver)](https://github.com/wisent-ai/codespy/releases)
+[![Downloads](https://img.shields.io/github/downloads/wisent-ai/codespy/total)](https://github.com/wisent-ai/codespy/releases)
+[![License](https://img.shields.io/github/license/wisent-ai/codespy)](https://github.com/wisent-ai/codespy)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
+<!-- wisent-readme-signals:end -->
+
+
 > Fast, offline code security scanner. Zero dependencies. One file. 13+ languages.
 
-[![Tests](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml/badge.svg)](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#why-zero-dependencies)
 
 Scan your entire codebase for security vulnerabilities, hardcoded secrets, injection risks, and code quality issues — **without sending a single byte to any external service**.

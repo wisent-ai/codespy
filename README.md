@@ -1,7 +1,7 @@
 # codespy
 
 <!-- wisent-readme-signals:start -->
-[![CI](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml)
+[![Tests](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml)
 [![Release](https://img.shields.io/github/v/release/wisent-ai/codespy?display_name=tag&sort=semver)](https://github.com/wisent-ai/codespy/releases)
 [![Downloads](https://img.shields.io/github/downloads/wisent-ai/codespy/total)](https://github.com/wisent-ai/codespy/releases)
 [![License](https://img.shields.io/github/license/wisent-ai/codespy)](https://github.com/wisent-ai/codespy)

@@ -1,4 +1,4 @@
-# codespy
+# Codespy
 
 <!-- wisent-readme-signals:start -->
 [![Tests](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/wisent-ai/codespy/actions/workflows/tests.yml)
@@ -8,289 +8,290 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
 <!-- wisent-readme-signals:end -->
 
+**Codespy is a zero-dependency Python scanner for fast, offline detection of
+known security, secret, injection, configuration, quality, performance, and
+supply-chain patterns in source repositories.**
 
-> Fast, offline code security scanner. Zero dependencies. One file. 13+ languages.
+It reads files locally and emits terminal, JSON, Markdown, or SARIF reports. It
+is designed as an inexpensive first pass and CI gate—not a proof that code is
+secure.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](#why-zero-dependencies)
+[Quick start](#quick-start) · [Detection scope](#detection-scope) ·
+[GitHub Action](#github-action) ·
+[Canonical repository](https://github.com/wisent-ai/codespy)
 
-Scan your entire codebase for security vulnerabilities, hardcoded secrets, injection risks, and code quality issues — **without sending a single byte to any external service**.
+Current scanner version: `1.1.0`. The release is one Python file with no runtime
+package dependencies and supports Python 3.10 or newer.
 
-```bash
-# Just run it. No install needed.
-curl -sO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
-python3 codespy.py .
+## Problem and intended users
+
+Many repositories need a security baseline before a team can deploy a larger
+analyzer, provision cloud access, or upload source. Codespy makes common
+high-signal patterns visible with one inspectable script and produces standard
+CI output without sending source to a service.
+
+Codespy serves:
+
+- **developers** checking a local change or unfamiliar repository;
+- **maintainers** establishing a lightweight, reviewable baseline;
+- **CI operators** producing SARIF and failing on high/critical findings;
+- **security reviewers** using fast pattern results to prioritize deeper manual,
+  semantic, dependency, and runtime analysis.
+
+## Product boundaries
+
+### Included
+
+- local recursive scanning with known build, dependency, cache, and VCS
+  directories excluded;
+- source classification for Python, JavaScript, TypeScript, Go, Rust, Java,
+  Ruby, PHP, C, C++, C#, shell, YAML, Dockerfile, Terraform, and SQL;
+- per-file size bound of 1 MB;
+- rules for common secrets, injection sinks, insecure configuration, quality,
+  performance, deprecation, and supply-chain patterns;
+- severity filtering and fix explanations;
+- terminal, JSON, Markdown, and SARIF output;
+- a GitHub Action with configurable report threshold and SARIF upload;
+- organization baselines and suppression governance as a separate policy layer.
+
+### Explicit non-goals
+
+- Codespy is not a compiler, parser, type checker, taint/data-flow engine,
+  dependency resolver, malware detector, penetration test, or formal verifier.
+- A clean report does not mean the repository is safe, correct, compliant, or
+  free of secrets.
+- Pattern findings can be false positives and can miss aliases, wrappers,
+  generated flows, runtime configuration, encoded values, or framework-specific
+  semantics.
+- Fix text is guidance, not an automatic patch or proof that remediation is
+  complete.
+- The numeric score and letter grade summarize this scanner's findings only;
+  they are not an industry rating or risk acceptance decision.
+- Local scanning must remain complete without a Wisent account, hosted service,
+  paid rule pack, or repository size limit.
+- Hosted scheduling, cross-repository policy, suppressions, triage, retained
+  evidence, and support are separate operated-service boundaries.
+
+### Supported environment and current capability
+
+| Surface | Requirement | Current state |
+|---|---|---|
+| Local scanner | Python 3.10+ standard library | Implemented |
+| Offline operation | readable local source | Implemented; no network call |
+| Formats | terminal, JSON, Markdown, SARIF | Implemented |
+| GitHub Action | GitHub Actions runner | Implemented repository action |
+| Syntax/data-flow analysis | language parser and semantic engine | Not implemented |
+| Hosted continuous scanning/policy | organization service | Separate service surface |
+
+## Core use cases
+
+### Scan a local repository
+
+- **Actor:** a developer.
+- **Initial state:** the source path is readable by Python.
+- **Outcome:** Codespy lists matching rules with severity, path, line, source
+  excerpt, and optional suggestion.
+- **Boundary:** it reads files but sends no source externally; ignored, large,
+  binary, unsupported, and semantically indirect cases may remain unseen.
+
+### Produce a review artifact
+
+- **Actor:** a maintainer or security reviewer.
+- **Initial state:** a target and minimum severity are selected.
+- **Outcome:** JSON, Markdown, or SARIF preserves findings for another tool or
+  reviewer.
+- **Boundary:** the artifact reports pattern matches at scan time; it does not
+  attest to repository identity, commit provenance, or remediation acceptance.
+
+### Gate a CI change
+
+- **Actor:** a repository administrator.
+- **Initial state:** the GitHub Action is pinned and workflow permissions are
+  reviewed.
+- **Outcome:** high or critical findings can fail the step and SARIF can be
+  uploaded to GitHub Code Scanning.
+- **Boundary:** CI policy must account for false positives, pinned action
+  revisions, changed rule semantics, and findings outside Codespy's scope.
+
+## How Codespy works
+
+```text
+local path
+   │
+   ├─ skip known artifact/dependency directories
+   ├─ classify supported text files (<= 1 MB each)
+   └─ evaluate local pattern rules
+             │
+             ▼
+ findings: rule + severity + category + file + line + suggestion
+             │
+       ┌─────┼────────┬─────────┐
+       ▼     ▼        ▼         ▼
+   terminal JSON   Markdown    SARIF
 ```
 
-## Why codespy?
+No source file is uploaded by `codespy.py`. The selected repository remains the
+source of truth. A human or higher-fidelity analyzer owns final triage and risk
+acceptance.
 
-Most security scanners require complex setup, cloud accounts, or send your code to external services. codespy is different:
+## Quick start
 
-| Feature | codespy | Semgrep | Snyk Code | SonarQube |
-|---------|---------|---------|-----------|-----------|
-| Zero dependencies | Yes | No | No | No |
-| Fully offline | Yes | Partial | No | Partial |
-| Single file | Yes | No | No | No |
-| Free | Yes | Freemium | Freemium | Freemium |
-| Setup time | 0 seconds | Minutes | Minutes | Hours |
-| CI/CD ready (SARIF) | Yes | Yes | Yes | Yes |
+Clone and scan the checkout itself:
 
-## Quick Start
+### Prerequisites
+
+- Git;
+- Python 3.10 or newer.
 
 ```bash
-# Scan current directory
-python3 codespy.py .
-
-# Show fix suggestions for every finding
-python3 codespy.py . --fix
-
-# Only high & critical issues
-python3 codespy.py . --severity high
-
-# JSON output for automation
-python3 codespy.py . --format json -o results.json
-
-# SARIF for GitHub Code Scanning
-python3 codespy.py . --format sarif -o results.sarif
-
-# Markdown report for PR comments
-python3 codespy.py . --format markdown -o report.md
+git clone https://github.com/wisent-ai/codespy.git
+cd codespy
+python3 codespy.py --version
+python3 codespy.py . --format sarif --output codespy-results.sarif --severity medium
 ```
+
+Expected result: the first command prints `codespy 1.1.0`; the second writes a
+SARIF report. Exit status is `1` when the filtered result contains a high or
+critical finding and `0` otherwise. A non-zero finding status is scan output,
+not necessarily a scanner crash.
+
+For a temporary one-file download, verify the source and release coordinate
+before execution:
+
+```bash
+curl -fLO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
+python3 codespy.py /path/to/project --fix
+```
+
+## Primary interfaces
+
+```text
+python3 codespy.py [path]
+  --format, -f terminal|json|sarif|markdown
+  --severity, -s info|low|medium|high|critical
+  --fix
+  --no-color
+  --output, -o <path>
+  --version, -v
+```
+
+- The default path is the current directory.
+- The default format is terminal.
+- The default minimum severity is `info`.
+- `--fix` displays rule suggestions; it never changes source.
+- High or critical findings in the filtered result produce exit status `1`.
+
+## Detection scope
+
+### Secrets and credentials
+
+Examples: password/token assignments, AWS access-key shapes, private-key
+material, JWTs, connection strings, and high-entropy candidates. Treat every hit
+as sensitive while triaging; do not paste a suspected live value into an issue.
+
+### Injection and unsafe execution
+
+Examples: string-built SQL or shell commands, `shell=True`, `os.system`,
+`eval`, `new Function`, unsafe deserialization, `innerHTML`, and
+`dangerouslySetInnerHTML`. These are lexical indicators; actual exploitability
+requires data-flow and context review.
+
+### Configuration and supply chain
+
+Examples: disabled TLS verification, broad CORS, weak security hashes,
+permissive modes, root containers, public cloud resources, unpinned dependencies,
+and floating container tags.
+
+### Quality and performance
+
+Examples: broad exception handling, mutable Python defaults, empty catches,
+debug output, TODO markers, ORM-loop query patterns, and repeated regex
+compilation. These findings are maintainability signals, not all vulnerabilities.
+
+The rule catalogue and implementation live in [`codespy.py`](codespy.py).
+Document rule-ID and severity changes because they can alter CI gates.
+
+## Output formats
+
+- **Terminal:** grouped human-readable findings and scanner-local score.
+- **JSON:** machine-readable metadata, counts, paths, lines, and findings.
+- **Markdown:** reviewable report tables with optional suggestions.
+- **SARIF:** static-analysis interchange for GitHub Code Scanning and compatible
+  viewers.
+
+Do not publish reports containing secret excerpts or private paths without
+redaction and access review.
 
 ## GitHub Action
 
-Use codespy in your CI/CD pipeline with a single line:
+Minimal workflow step:
 
 ```yaml
 - uses: wisent-ai/codespy@v1
 ```
 
-### Full Example
+A more explicit repository gate:
 
 ```yaml
-name: Security Scan
-on: [push, pull_request]
-
-jobs:
-  security:
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write  # Required for Code Scanning upload
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run codespy
-        uses: wisent-ai/codespy@v1
-        with:
-          severity: medium        # Report medium+ findings
-          fail-on-findings: high  # Fail CI on high/critical
-          show-fixes: true        # Include fix suggestions
-```
-
-### Action Inputs
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `path` | `.` | Path to scan |
-| `severity` | `low` | Minimum severity to report: `info`, `low`, `medium`, `high`, `critical` |
-| `format` | `sarif` | Output format: `terminal`, `json`, `sarif`, `markdown` |
-| `output-file` | `codespy-results.sarif` | Output file path |
-| `fail-on-findings` | `high` | Fail if findings at this level or above. Set to `none` to never fail |
-| `show-fixes` | `true` | Include fix suggestions |
-| `upload-sarif` | `true` | Auto-upload SARIF to GitHub Code Scanning |
-
-### Action Outputs
-
-| Output | Description |
-|--------|-------------|
-| `total-findings` | Total number of findings |
-| `critical-count` | Number of critical severity findings |
-| `high-count` | Number of high severity findings |
-| `security-score` | Security score (0-100) |
-| `security-grade` | Letter grade (A+ to F) |
-
-### Use Outputs in Your Workflow
-
-```yaml
-- name: Run codespy
-  id: scan
+- uses: actions/checkout@v4
+- name: Run Codespy
+  id: codespy
   uses: wisent-ai/codespy@v1
-
-- name: Comment on PR
-  if: github.event_name == 'pull_request'
-  uses: actions/github-script@v7
   with:
-    script: |
-      github.rest.issues.createComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        issue_number: context.issue.number,
-        body: `## Security Score: ${{ steps.scan.outputs.security-score }}/100 (${{ steps.scan.outputs.security-grade }})\nFindings: ${{ steps.scan.outputs.total-findings }} total, ${{ steps.scan.outputs.critical-count }} critical, ${{ steps.scan.outputs.high-count }} high`
-      })
+    path: .
+    severity: medium
+    fail-on-findings: high
+    format: sarif
+    output-file: codespy-results.sarif
+    show-fixes: true
+    upload-sarif: true
 ```
 
-## What It Detects
+| Input | Default | Meaning |
+|---|---:|---|
+| `path` | `.` | path to scan |
+| `severity` | `low` | minimum reported severity in the action |
+| `format` | `sarif` | terminal, JSON, SARIF, or Markdown |
+| `output-file` | `codespy-results.sarif` | report path |
+| `fail-on-findings` | `high` | action failure threshold; `none` disables it |
+| `show-fixes` | `true` | include suggestions |
+| `upload-sarif` | `true` | upload SARIF when permissions allow |
 
-### Secrets & Credentials (Critical)
-- Hardcoded passwords, API keys, tokens
-- AWS access keys (`AKIA...`)
-- Private key material (`-----BEGIN PRIVATE KEY-----`)
-- High-entropy secret strings
-- JWT tokens, database connection strings
+The action exposes total, critical, and high counts plus the scanner-local score
+and grade. Pin a full commit SHA when your supply-chain policy requires an
+immutable action revision.
 
-### Injection Vulnerabilities (High)
-- SQL injection (Python, JS, Go, Ruby, PHP)
-- Shell injection (`subprocess` with `shell=True`, `os.system()`)
-- Command injection via string interpolation
-- `eval()` / `new Function()` usage
-- Unsafe deserialization (pickle, `yaml.load`)
-- XSS via `innerHTML`, `dangerouslySetInnerHTML`
+## Baselines and remediation
 
-### Security Misconfigurations (Medium)
-- Debug mode enabled in production
-- CORS wildcard (`*`)
-- Disabled SSL/TLS verification
-- Weak hash algorithms (MD5, SHA1 for security)
-- Permissive file permissions (`chmod 777`)
-- Docker running as root
-- Terraform public S3 buckets
-- Open security groups (0.0.0.0/0)
+A baseline can separate accepted historical findings from new findings, but it
+must not silently suppress results. Review baseline ownership, rule ID, file,
+line drift, expiry, reason, and repository scope. Re-run higher-fidelity analysis
+for authentication, authorization, crypto, deserialization, network boundaries,
+and other high-impact code even when Codespy is clean.
 
-### Code Quality (Low/Info)
-- Broad exception catching (`except Exception`)
-- Mutable default arguments (Python)
-- `console.log` left in production code
-- Empty catch blocks
-- TODO/FIXME/HACK markers
+## Operational model
 
-### Performance & Supply Chain
-- N+1 query patterns (ORM loops)
-- Regex compilation in loops
-- Unpinned dependencies
-- Docker `latest` tag usage
+- **Configuration:** CLI arguments or GitHub Action inputs; no credentials or
+  remote endpoint are required for local scanning.
+- **State:** no scanner database; reports and optional organization baselines are
+  external artifacts.
+- **Observability:** file/line counts, skipped files, categories, severity counts,
+  findings, duration, and output status.
+- **Recovery:** retain the prior report and pinned scanner revision when rule
+  changes affect a gate; remove generated reports containing sensitive excerpts
+  according to repository policy.
+- **Cost:** local scanning is unmetered. Hosted scheduling, organization policy,
+  triage, retained evidence, and dedicated support are separate service units.
 
-## Output Formats
+## Project status and support
 
-### Terminal (default)
-```
-codespy v1.0.0 -- Code Security Scanner
------------------------------------------------
-  Path:    /home/user/project
-  Files:   42 scanned
-  Lines:   12,847
-  Time:    156ms
-
-Findings: 7 total
-  CRITICAL   1
-  HIGH       2
-  MEDIUM     3
-  LOW        1
-
-Security Score: 72/100 (Grade: B)
-```
-
-### SARIF (`--format sarif`)
-Standard Static Analysis Results Interchange Format. Integrates directly with GitHub Code Scanning, VS Code SARIF Viewer, and other tools.
-
-### JSON (`--format json`)
-Machine-readable with full metadata — finding details, severity counts, file paths, line numbers.
-
-### Markdown (`--format markdown`)
-Human-readable tables. Perfect for PR comments, Notion, Confluence, or any documentation.
-
-## CI/CD Integration
-
-### GitHub Actions (Recommended)
-
-Use the action directly:
-```yaml
-- uses: wisent-ai/codespy@v1
-```
-
-Or run manually:
-```yaml
-- name: Run codespy
-  run: |
-    curl -sO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
-    python3 codespy.py . --format sarif -o results.sarif --severity medium
-- uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: results.sarif
-```
-
-### GitLab CI
-```yaml
-security-scan:
-  image: python:3.12-slim
-  script:
-    - curl -sO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
-    - python3 codespy.py . --format json -o gl-code-quality-report.json --severity medium
-  artifacts:
-    reports:
-      codequality: gl-code-quality-report.json
-```
-
-### Pre-commit Hook
-```bash
-#!/bin/bash
-# .git/hooks/pre-commit
-python3 codespy.py . --severity high --no-color
-if [ $? -ne 0 ]; then
-  echo "Security scan failed. Fix issues before committing."
-  exit 1
-fi
-```
-
-## Security Rules Reference
-
-| ID Range | Category | Severity | Examples |
-|----------|----------|----------|----------|
-| SEC001-006 | Secrets | Critical/High | Hardcoded credentials, API keys, private keys |
-| INJ001-009 | Injection | High/Medium | SQL, shell, code injection, XSS |
-| CFG001-007 | Configuration | Medium/High | Debug mode, CORS, SSL, permissions |
-| QUA001-006 | Quality | Info/Low | TODOs, broad catches, mutable defaults |
-| PRF001-003 | Performance | Low/Medium | Blocking I/O, N+1 queries, regex in loops |
-| SUP001 | Supply Chain | Low | Unpinned dependencies |
-| DOC001-002 | Docker | Low/Medium | Root user, latest tag |
-| IAC001-002 | Infrastructure | Medium/High | Public S3, open security groups |
-
-## Scoring System
-
-codespy generates a security score (0-100) based on finding severity and density:
-
-| Grade | Score | Meaning |
-|-------|-------|---------|
-| A+ | 95-100 | Excellent — minimal or no issues |
-| A | 90-94 | Great — minor issues only |
-| B+ | 80-89 | Good — some medium issues |
-| B | 70-79 | Fair — needs attention |
-| C | 60-69 | Concerning — significant issues |
-| D | 50-59 | Poor — many issues found |
-| F | <50 | Critical — immediate action needed |
-
-## Why Zero Dependencies?
-
-Dependencies are attack surface. Every `pip install` is a trust decision. codespy uses only Python's standard library because:
-
-1. **No supply chain risk** — nothing to compromise upstream
-2. **No version conflicts** — works on any Python 3.10+ system
-3. **Instant setup** — no install step, no virtual environment, no package manager
-4. **Auditable** — one file, one read, complete understanding
-
-## Development
-
-```bash
-# Run tests (82 tests)
-python3 test_codespy.py
-
-# Self-scan
-python3 codespy.py . --fix
-```
-
-## License
-
-[MIT](LICENSE)
-
----
-
-Built by [Adam (ADAM)](https://github.com/wisent-ai) — an autonomous AI agent on the [Wisent](https://wisent.ai) platform.
+- **Maturity:** public development scanner, version `1.1.0`.
+- **Local contract:** zero-dependency offline scan and four report formats.
+- **Managed contract:** hosted continuous scanning, organization policy,
+  suppression governance, triage, retained evidence, and support are not
+  provided by the local script.
+- **Issues:** [`wisent-ai/codespy`](https://github.com/wisent-ai/codespy/issues).
+- **Security:** use private GitHub Security Advisories; never paste a suspected
+  secret, private source excerpt, proprietary path, or unredacted report into a
+  public issue.
+- **License:** MIT; see [`LICENSE`](LICENSE).

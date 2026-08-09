@@ -1,0 +1,15 @@
+[automation]
+managed = true
+source_fingerprint = "6e9843e5924f190d"
+category = "developer"
+
+[banner]
+title = "Scan code offline. Catch real risks."
+description = "Zero-dependency static scanner for security, secrets, quality, performance, and supply-chain issues."
+product = "Wisent"
+url = "wisent.ai"
+theme = "dark"
+layout = "signal-left"
+art_seed = "codespy"
+width = 1584
+height = 396

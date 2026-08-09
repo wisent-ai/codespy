@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "releases": true,
-  "type": "github-action",
-  "manifest": "action.yml",
-  "publisher": [
-    "git-tags"
-  ]
-}

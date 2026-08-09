@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "product": "codespy",
+  "releases": true,
+  "version_source": {
+    "kind": "regex",
+    "path": "codespy.py",
+    "pattern": "(?m)^__version__\\s*=\\s*[\\\"'](?P<version>[0-9A-Za-z._-]+)[\\\"']"
+  },
+  "platforms": {
+    "source": {
+      "runner_platform": "linux-amd64",
+      "quality": [
+        {
+          "name": "release-metadata",
+          "argv": [
+            "python3",
+            "scripts/stado_release.py",
+            "quality"
+          ]
+        }
+      ],
+      "build": {
+        "argv": [
+          "python3",
+          "scripts/stado_release.py",
+          "build"
+        ]
+      },
+      "stage": {
+        "release/source-bundle.tar": "release/source-bundle.tar"
+      }
+    }
+  },
+  "runtime": {
+    "binary": "release/source-bundle.tar",
+    "launcher": "release/source-bundle.tar",
+    "config_schema": 1,
+    "state_schema": 1,
+    "minimum_stado_version": "0.1.0",
+    "rollback_compatible_with": []
+  },
+  "promotion": {
+    "channels": [
+      "stable"
+    ],
+    "reconcile": false
+  },
+  "inputs": {},
+  "deliveries": []
+}

@@ -10,9 +10,14 @@
 
 # Codespy
 
-**Codespy is a zero-dependency Python scanner for fast, offline detection of
-known security, secret, injection, configuration, quality, performance, and
-supply-chain patterns in source repositories.**
+AI Pentester to Secure Your Code.
+
+Find vulnerabilities, shell injections, hardcoded keys and other vibe-coded
+security problems. All of your secrets secured by an agent you own and audit to
+make sure your defences cannot be broken by adversaries. 100% free and open
+source.
+
+Because security is something you need to check.
 
 It reads files locally and emits terminal, JSON, Markdown, or SARIF reports. It
 is designed as an inexpensive first pass and CI gate—not a proof that code is

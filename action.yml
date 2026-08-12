@@ -10,28 +10,32 @@ inputs:
     description: 'Path to scan (relative to workspace root)'
     required: false
     default: '.'
-  severity:
+  severity-threshold:
     description: 'Minimum severity to report: info, low, medium, high, critical'
     required: false
-    default: 'low'
-  format:
+    default: 'high'
+  output-format:
     description: 'Output format: terminal, json, sarif, markdown'
     required: false
-    default: 'sarif'
-  output-file:
-    description: 'File path for output (when using json/sarif/markdown format)'
-    required: false
-    default: 'codespy-results.sarif'
-  fail-on-findings:
-    description: 'Fail the action if findings at or above this severity are found. Set to "none" to never fail.'
-    required: false
-    default: 'high'
-  show-fixes:
-    description: 'Include fix suggestions in output'
+    default: 'markdown'
+  scan-changed-only:
+    description: 'Only scan files changed in the current pull request (ignored on push events)'
     required: false
     default: 'true'
-  upload-sarif:
-    description: 'Automatically upload SARIF results to GitHub Code Scanning (requires sarif format)'
+  post-comment:
+    description: 'Post a PR comment with findings summary (requires pull_request event)'
+    required: false
+    default: 'true'
+  fail-on-findings:
+    description: 'Fail the action if findings at or above the severity threshold are found. Set to "false" to never fail.'
+    required: false
+    default: 'true'
+  sarif-upload:
+    description: 'Upload SARIF results to GitHub Code Scanning / Security tab'
+    required: false
+    default: 'false'
+  show-fixes:
+    description: 'Include fix suggestions in output'
     required: false
     default: 'true'
   python-version:
@@ -64,6 +68,9 @@ outputs:
   sarif-file:
     description: 'Path to SARIF output file (if generated)'
     value: ${{ steps.scan.outputs.sarif_file }}
+  report-file:
+    description: 'Path to the scan report file'
+    value: ${{ steps.scan.outputs.report_file }}
 
 runs:
   using: 'composite'
@@ -76,118 +83,24 @@ runs:
     - name: Run codespy scan
       id: scan
       shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity-threshold }}
+        INPUT_OUTPUT_FORMAT: ${{ inputs.output-format }}
+        INPUT_SCAN_CHANGED_ONLY: ${{ inputs.scan-changed-only }}
+        INPUT_POST_COMMENT: ${{ inputs.post-comment }}
+        INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        INPUT_SARIF_UPLOAD: ${{ inputs.sarif-upload }}
+        INPUT_SHOW_FIXES: ${{ inputs.show-fixes }}
+        CODESPY_SCRIPT: ${{ github.action_path }}/codespy.py
+        CODESPY_ENTRYPOINT: ${{ github.action_path }}/entrypoint.sh
       run: |
-        # Build command
-        CMD="python3 ${{ github.action_path }}/codespy.py ${{ inputs.path }}"
-        CMD="$CMD --severity ${{ inputs.severity }}"
-
-        # Add fix suggestions
-        if [ "${{ inputs.show-fixes }}" = "true" ]; then
-          CMD="$CMD --fix"
-        fi
-
-        # Determine output format and file
-        FORMAT="${{ inputs.format }}"
-        OUTPUT_FILE="${{ inputs.output-file }}"
-
-        if [ "$FORMAT" != "terminal" ]; then
-          CMD="$CMD --format $FORMAT"
-          if [ -n "$OUTPUT_FILE" ]; then
-            CMD="$CMD -o $OUTPUT_FILE"
-          fi
-        fi
-
-        CMD="$CMD --no-color"
-
-        echo "::group::codespy scan command"
-        echo "$CMD"
-        echo "::endgroup::"
-
-        # Run the scan and capture output
-        # Always generate JSON for metadata extraction
-        JSON_TMP=$(mktemp)
-        python3 ${{ github.action_path }}/codespy.py ${{ inputs.path }} \
-          --severity ${{ inputs.severity }} \
-          --format json \
-          -o "$JSON_TMP" \
-          --no-color 2>/dev/null || true
-
-        # Extract metadata from JSON output
-        if [ -f "$JSON_TMP" ]; then
-          TOTAL=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('total_findings', 0))" 2>/dev/null || echo "0")
-          CRITICAL=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('critical', 0))" 2>/dev/null || echo "0")
-          HIGH=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('high', 0))" 2>/dev/null || echo "0")
-          MEDIUM=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('medium', 0))" 2>/dev/null || echo "0")
-          LOW=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('low', 0))" 2>/dev/null || echo "0")
-          SCORE=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('security_score', 100))" 2>/dev/null || echo "100")
-          GRADE=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('security_grade', 'A+'))" 2>/dev/null || echo "A+")
-          rm -f "$JSON_TMP"
-        else
-          TOTAL=0; CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; SCORE=100; GRADE="A+"
-        fi
-
-        echo "total_findings=$TOTAL" >> $GITHUB_OUTPUT
-        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
-        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
-        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
-        echo "low_count=$LOW" >> $GITHUB_OUTPUT
-        echo "security_score=$SCORE" >> $GITHUB_OUTPUT
-        echo "security_grade=$GRADE" >> $GITHUB_OUTPUT
-
-        # Now run the actual scan with the requested format
-        set +e
-        eval $CMD
-        SCAN_EXIT=$?
-        set -e
-
-        # Set SARIF file output
-        if [ "$FORMAT" = "sarif" ] && [ -f "$OUTPUT_FILE" ]; then
-          echo "sarif_file=$OUTPUT_FILE" >> $GITHUB_OUTPUT
-        fi
-
-        # Create summary
-        echo "## codespy Security Scan Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Security Score | **$SCORE/100** (Grade: $GRADE) |" >> $GITHUB_STEP_SUMMARY
-        echo "| Total Findings | $TOTAL |" >> $GITHUB_STEP_SUMMARY
-        if [ "$CRITICAL" -gt 0 ]; then
-          echo "| :red_circle: Critical | **$CRITICAL** |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$HIGH" -gt 0 ]; then
-          echo "| :orange_circle: High | **$HIGH** |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$MEDIUM" -gt 0 ]; then
-          echo "| :yellow_circle: Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$LOW" -gt 0 ]; then
-          echo "| :large_blue_circle: Low | $LOW |" >> $GITHUB_STEP_SUMMARY
-        fi
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        # Determine if we should fail
-        FAIL_LEVEL="${{ inputs.fail-on-findings }}"
-        SHOULD_FAIL=0
-
-        if [ "$FAIL_LEVEL" = "critical" ] && [ "$CRITICAL" -gt 0 ]; then
-          SHOULD_FAIL=1
-        elif [ "$FAIL_LEVEL" = "high" ] && [ $((CRITICAL + HIGH)) -gt 0 ]; then
-          SHOULD_FAIL=1
-        elif [ "$FAIL_LEVEL" = "medium" ] && [ $((CRITICAL + HIGH + MEDIUM)) -gt 0 ]; then
-          SHOULD_FAIL=1
-        elif [ "$FAIL_LEVEL" = "low" ] && [ "$TOTAL" -gt 0 ]; then
-          SHOULD_FAIL=1
-        fi
-
-        if [ "$SHOULD_FAIL" -eq 1 ]; then
-          echo "::error::codespy found findings at or above '$FAIL_LEVEL' severity. Score: $SCORE/100 ($GRADE)"
-          exit 1
-        fi
+        chmod +x "$CODESPY_ENTRYPOINT"
+        bash "$CODESPY_ENTRYPOINT"
 
     - name: Upload SARIF to GitHub Code Scanning
-      if: inputs.format == 'sarif' && inputs.upload-sarif == 'true' && always()
+      if: inputs.sarif-upload == 'true' && always()
       uses: github/codeql-action/upload-sarif@v3
       with:
-        sarif_file: ${{ inputs.output-file }}
+        sarif_file: ${{ steps.scan.outputs.sarif_file || 'codespy-results.sarif' }}
       continue-on-error: true

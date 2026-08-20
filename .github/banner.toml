@@ -1,11 +1,13 @@
 [automation]
 managed = true
-source_fingerprint = "b316ad4b2e85b659"
+source_fingerprint = "8b368003131ce5a7"
 category = "developer"
+copy_status = "missing"
+approved_in = ""
 
 [banner]
-title = "Scan code offline. Catch real risks."
-description = "Zero-dependency static scanner for security, secrets, quality, performance, and supply-chain issues."
+title = "Codespy"
+description = ""
 product = "Wisent"
 url = "wisent.com"
 theme = "dark"

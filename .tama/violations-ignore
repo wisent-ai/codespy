@@ -1,0 +1,14 @@
+# Audit exclusions for `tama find-violations`: generated output and paths
+# fixed by something outside this project.
+#
+# Written by the wisent-visuals banner bot from .github/banner.toml:
+assets/readme-banner.svg
+# Rendered from codespy_core/ by tools/build_codespy.py and checked by the
+# version workflow. The published scanner is deliberately one file a person can
+# download and run with nothing installed; codespy_core/ is what gets edited.
+codespy.py
+# The repository root. GitHub reads action.yml, README.md and LICENSE from
+# here, git reads .gitignore, and the release workflow reads
+# released-surface.json, platform-entitlements.json and .wisent-release.json.
+# None of them can move into a sub-folder.
+.

@@ -21,8 +21,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Check that codespy.py matches codespy_core
+        run: python3 tools/build_codespy.py --check
+
       - name: Run tests
-        run: python3 test_codespy.py
+        run: python3 tests/run.py
 
       - name: Self-scan (security check)
         run: python3 codespy.py . --severity high --no-color || true

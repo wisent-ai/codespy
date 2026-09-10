@@ -14,7 +14,11 @@ Examples:
     python3 codespy.py . --severity high           # Only high/critical issues
     python3 codespy.py . --fix                     # Show suggested fixes
     python3 codespy.py . --format sarif            # SARIF format for CI/CD
+
+Rendered from codespy_core/ by tools/build_codespy.py. Edit the package and render
+again; an edit made here is overwritten by the next build.
 """
+
 
 import argparse
 import json
@@ -22,21 +26,20 @@ import os
 import re
 import sys
 import time
-import hashlib
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 
+# ─── Scanner identity, the file types it reads, and the limits of one scan.
+
 __version__ = "1.1.0"
+
+
 __author__ = "Adam (ADAM) — Wisent AI Agent"
 
 
-# ─── Configuration ──────────────────────────────────────────────────────────
-
-# File extensions to scan by language
 LANGUAGE_EXTENSIONS = {
     "python": {".py", ".pyw"},
     "javascript": {".js", ".jsx", ".mjs", ".cjs"},
@@ -56,7 +59,7 @@ LANGUAGE_EXTENSIONS = {
     "sql": {".sql"},
 }
 
-# Directories to always skip
+
 SKIP_DIRS = {
     ".git", ".svn", ".hg", "node_modules", "__pycache__", ".tox",
     ".pytest_cache", ".mypy_cache", "venv", ".venv", "env", ".env",
@@ -64,10 +67,11 @@ SKIP_DIRS = {
     "coverage", ".coverage", "htmlcov", ".eggs", "*.egg-info",
 }
 
+
 MAX_FILE_SIZE = 1_000_000  # 1MB max per file
 
 
-# ─── Data Models ────────────────────────────────────────────────────────────
+# ─── Severities, categories, findings, and the scan result reports are written from.
 
 class Severity(Enum):
     INFO = "info"
@@ -233,12 +237,10 @@ class ScanResult:
         }
 
 
-# ─── Security Rules ────────────────────────────────────────────────────────
-
-# Each rule: (rule_id, title, pattern, severity, category, description, suggestion, cwe_id, languages, confidence)
-# languages=None means all languages
+# ─── Detection rules, in the order codespy_core/rules declares.
 
 RULES = [
+    # ── secrets.CREDENTIALS ──
     # ── Hardcoded Secrets ──
     (
         "SEC001", "Hardcoded password",
@@ -288,7 +290,7 @@ RULES = [
         "Verify this isn't a real credential. Use environment variables for secrets.",
         "CWE-798", None, "medium"
     ),
-
+    # ── injection.CODE_EXECUTION ──
     # ── Injection Vulnerabilities ──
     (
         "INJ001", "SQL injection risk",
@@ -362,7 +364,7 @@ RULES = [
         "Use parameterized queries: db.Query(\"SELECT * FROM t WHERE id = $1\", id)",
         "CWE-89", {"go"}, "high"
     ),
-
+    # ── configuration.APPLICATION_SETTINGS ──
     # ── Security Misconfigurations ──
     (
         "CFG001", "Debug mode enabled",
@@ -420,7 +422,7 @@ RULES = [
         "Use more restrictive permissions (e.g., 0o644 for files, 0o755 for directories).",
         "CWE-732", None, "high"
     ),
-
+    # ── quality.MAINTAINABILITY ──
     # ── Code Quality ──
     (
         "QUA001", "TODO/FIXME/HACK comment",
@@ -470,7 +472,7 @@ RULES = [
         "Log the error or handle it explicitly.",
         "CWE-390", None, "medium"
     ),
-
+    # ── quality.PERFORMANCE ──
     # ── Performance ──
     (
         "PRF001", "Synchronous file I/O in async context",
@@ -496,7 +498,7 @@ RULES = [
         "Compile the regex before the loop: pattern = re.compile(r'...'); pattern.search(text)",
         "", {"python"}, "low"
     ),
-
+    # ── configuration.SUPPLY_CHAIN ──
     # ── Supply Chain ──
     (
         "SUP001", "Unpinned dependency",
@@ -506,7 +508,7 @@ RULES = [
         "Pin dependencies to specific versions for reproducible builds.",
         "CWE-1104", None, "low"
     ),
-
+    # ── configuration.CONTAINER_IMAGES ──
     # ── Dockerfile Security ──
     (
         "DOC001", "Running as root in Docker",
@@ -524,7 +526,7 @@ RULES = [
         "Pin to a specific version: FROM python:3.11-slim",
         "", {"dockerfile"}, "medium"
     ),
-
+    # ── configuration.INFRASTRUCTURE ──
     # ── Terraform / IaC ──
     (
         "IAC001", "Public S3 bucket",
@@ -542,7 +544,7 @@ RULES = [
         "Restrict to specific IP ranges or use a VPN.",
         "CWE-284", {"terraform"}, "medium"
     ),
-
+    # ── secrets.SERVICE_TOKENS ──
     # ── Additional Secret Patterns ──
     (
         "SEC007", "GitHub personal access token",
@@ -592,7 +594,7 @@ RULES = [
         "Load authentication tokens from environment variables or a secrets manager.",
         "CWE-798", None, "medium"
     ),
-
+    # ── injection.REQUEST_FORGERY ──
     # ── SSRF (Server-Side Request Forgery) ──
     (
         "SSRF001", "Potential SSRF via requests library",
@@ -628,7 +630,7 @@ RULES = [
         "Use path.resolve() and verify the result starts with the intended base directory.",
         "CWE-22", {"javascript", "typescript"}, "medium"
     ),
-
+    # ── injection.REDIRECTS ──
     # ── Open Redirect ──
     (
         "REDIR001", "Open redirect in Python web framework",
@@ -646,7 +648,7 @@ RULES = [
         "Validate redirect URLs against an allowlist of permitted paths or hosts.",
         "CWE-601", {"javascript", "typescript"}, "medium"
     ),
-
+    # ── secrets.TOKEN_VERIFICATION ──
     # ── JWT / Authentication ──
     (
         "AUTH001", "JWT verification disabled",
@@ -664,7 +666,7 @@ RULES = [
         "Load the JWT secret from environment variables or a secrets manager.",
         "CWE-798", None, "medium"
     ),
-
+    # ── configuration.CRYPTOGRAPHY ──
     # ── Cryptographic Issues ──
     (
         "CRYPTO001", "Weak cipher or ECB mode",
@@ -682,7 +684,7 @@ RULES = [
         "Generate a random IV for each encryption operation using os.urandom() or crypto.randomBytes().",
         "CWE-329", None, "medium"
     ),
-
+    # ── injection.TEMPLATES ──
     # ── Template Injection (SSTI) ──
     (
         "SSTI001", "Server-side template injection",
@@ -692,7 +694,7 @@ RULES = [
         "Use render_template() with static template files instead of render_template_string().",
         "CWE-1336", {"python"}, "medium"
     ),
-
+    # ── injection.BROWSER_MARKUP ──
     # ── React / Frontend XSS ──
     (
         "REACT001", "dangerouslySetInnerHTML usage",
@@ -718,7 +720,7 @@ RULES = [
         "Use DOM APIs (createElement, textContent) instead of document.write().",
         "CWE-79", {"javascript", "typescript"}, "medium"
     ),
-
+    # ── injection.WEB_FRAMEWORKS ──
     # ── Django-Specific ──
     (
         "DJANGO001", "Django mark_safe with variable input",
@@ -764,6 +766,7 @@ RULES = [
         "Use execFile/execFileSync with arguments as an array. Never concatenate user input into commands.",
         "CWE-78", {"javascript", "typescript"}, "high"
     ),
+    # ── configuration.JAVASCRIPT_RUNTIME ──
     (
         "JS003", "Node.js TLS verification disabled",
         r"""(?:NODE_TLS_REJECT_UNAUTHORIZED|rejectUnauthorized)\s*[=:]\s*(?:['"]?0['"]?|false)""",
@@ -780,7 +783,7 @@ RULES = [
         "Use crypto.randomUUID(), crypto.getRandomValues(), or crypto.randomBytes().",
         "CWE-338", {"javascript", "typescript"}, "low"
     ),
-
+    # ── configuration.PYTHON_RUNTIME ──
     # ── Python-Specific ──
     (
         "PY001", "Insecure temporary file creation",
@@ -798,6 +801,7 @@ RULES = [
         "Use if/raise for security: if not user.is_authenticated: raise PermissionError().",
         "CWE-617", {"python"}, "medium"
     ),
+    # ── injection.DESERIALIZATION ──
     (
         "PY003", "Unsafe marshal/shelve deserialization",
         r"""(?:marshal\.loads?|shelve\.open)\s*\(""",
@@ -806,7 +810,7 @@ RULES = [
         "Use json.loads() for untrusted data. Only use marshal/shelve with trusted sources.",
         "CWE-502", {"python"}, "medium"
     ),
-
+    # ── configuration.KUBERNETES ──
     # ── Kubernetes / Container Security ──
     (
         "K8S001", "Privileged Kubernetes container",
@@ -832,7 +836,7 @@ RULES = [
         "Remove hostNetwork/hostPID/hostIPC unless absolutely required.",
         "CWE-250", {"yaml"}, "high"
     ),
-
+    # ── configuration.CONTAINER_BUILDS ──
     # ── Additional Dockerfile Rules ──
     (
         "DOC003", "Docker ADD instead of COPY",
@@ -858,7 +862,7 @@ RULES = [
         "Avoid exposing database or management ports. Use Docker networks for inter-service communication.",
         "CWE-284", {"dockerfile"}, "medium"
     ),
-
+    # ── configuration.MANAGED_DATABASES ──
     # ── Additional IaC Rules ──
     (
         "IAC003", "Publicly accessible RDS instance",
@@ -868,7 +872,7 @@ RULES = [
         "Set publicly_accessible = false and use private subnets with VPN/bastion access.",
         "CWE-284", {"terraform"}, "high"
     ),
-
+    # ── secrets.LEAKED_VALUES ──
     # ── Environment / Logging ──
     (
         "ENV001", "Environment variable leaked in logs",
@@ -878,7 +882,7 @@ RULES = [
         "Never log raw environment variable values. Mask sensitive values before logging.",
         "CWE-532", None, "low"
     ),
-
+    # ── configuration.REQUEST_HANDLING ──
     # ── Mass Assignment ──
     (
         "API001", "Potential mass assignment",
@@ -891,7 +895,7 @@ RULES = [
 ]
 
 
-# ─── Scanner Engine ─────────────────────────────────────────────────────────
+# ─── Collect scannable files and evaluate the rule table against their contents.
 
 def detect_language_from_path(file_path: str) -> Optional[str]:
     """Detect language from file path/extension."""
@@ -1038,7 +1042,50 @@ def run_scan(path: str, min_severity: Severity = Severity.INFO,
     return result
 
 
-# ─── Output Formatters ──────────────────────────────────────────────────────
+# ─── The scanner-local score and grade summarising one set of findings.
+
+def compute_score(result: ScanResult) -> int:
+    """Compute a security score (0-100) from findings."""
+    if result.files_scanned == 0:
+        return 100
+
+    # Deductions per severity
+    deductions = {
+        Severity.CRITICAL: 20,
+        Severity.HIGH: 10,
+        Severity.MEDIUM: 5,
+        Severity.LOW: 2,
+        Severity.INFO: 0,
+    }
+
+    total_deduction = sum(deductions[f.severity] for f in result.findings)
+
+    # Normalize by codebase size (larger codebases get some leniency)
+    size_factor = max(1, result.lines_scanned / 1000)
+    adjusted_deduction = total_deduction / (1 + size_factor * 0.1)
+
+    return max(0, min(100, round(100 - adjusted_deduction)))
+
+
+def score_to_grade(score: int) -> str:
+    """Convert score to letter grade."""
+    if score >= 95:
+        return "A+"
+    elif score >= 90:
+        return "A"
+    elif score >= 80:
+        return "B+"
+    elif score >= 70:
+        return "B"
+    elif score >= 60:
+        return "C"
+    elif score >= 50:
+        return "D"
+    else:
+        return "F"
+
+
+# ─── Human-readable terminal report, with optional colour.
 
 SEVERITY_COLORS = {
     "critical": "\033[1;31m",  # Bold Red
@@ -1047,8 +1094,14 @@ SEVERITY_COLORS = {
     "low": "\033[36m",         # Cyan
     "info": "\033[37m",        # White/Gray
 }
+
+
 RESET = "\033[0m"
+
+
 BOLD = "\033[1m"
+
+
 DIM = "\033[2m"
 
 
@@ -1127,46 +1180,7 @@ def format_terminal(result: ScanResult, show_fix: bool = False, use_color: bool 
     return "\n".join(lines)
 
 
-def compute_score(result: ScanResult) -> int:
-    """Compute a security score (0-100) from findings."""
-    if result.files_scanned == 0:
-        return 100
-
-    # Deductions per severity
-    deductions = {
-        Severity.CRITICAL: 20,
-        Severity.HIGH: 10,
-        Severity.MEDIUM: 5,
-        Severity.LOW: 2,
-        Severity.INFO: 0,
-    }
-
-    total_deduction = sum(deductions[f.severity] for f in result.findings)
-
-    # Normalize by codebase size (larger codebases get some leniency)
-    size_factor = max(1, result.lines_scanned / 1000)
-    adjusted_deduction = total_deduction / (1 + size_factor * 0.1)
-
-    return max(0, min(100, round(100 - adjusted_deduction)))
-
-
-def score_to_grade(score: int) -> str:
-    """Convert score to letter grade."""
-    if score >= 95:
-        return "A+"
-    elif score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B+"
-    elif score >= 70:
-        return "B"
-    elif score >= 60:
-        return "C"
-    elif score >= 50:
-        return "D"
-    else:
-        return "F"
-
+# ─── JSON and SARIF reports for other tools to read.
 
 def format_json(result: ScanResult) -> str:
     """Format scan results as JSON."""
@@ -1177,6 +1191,8 @@ def format_sarif(result: ScanResult) -> str:
     """Format scan results as SARIF 2.1.0."""
     return json.dumps(result.to_sarif(), indent=2)
 
+
+# ─── Markdown report for review threads and job summaries.
 
 def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     """Format scan results as Markdown."""
@@ -1236,7 +1252,7 @@ def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     return "\n".join(lines)
 
 
-# ─── CLI ────────────────────────────────────────────────────────────────────
+# ─── Command-line arguments, output selection, and the scan exit status.
 
 def parse_severity(s: str) -> Severity:
     """Parse severity string to enum."""

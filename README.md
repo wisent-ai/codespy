@@ -24,26 +24,22 @@ is designed as an inexpensive first pass and CI gate—not a proof that code is
 secure.
 
 [Quick start](#quick-start) · [Detection scope](#detection-scope) ·
-[GitHub Action](#github-action) ·
+[GitHub Action](#github-action) · [Repository layout](#repository-layout) ·
 [Canonical repository](https://github.com/wisent-ai/codespy)
 
 Current scanner version: `1.1.0`. The release is one Python file with no runtime
-package dependencies and supports Python 3.10 or newer.
+package dependencies and supports Python 3.10 or newer. That file is rendered
+from `codespy_core/`; see [Repository layout](#repository-layout).
 
 ## Problem and intended users
 
 Many repositories need a security baseline before a team can deploy a larger
 analyzer, provision cloud access, or upload source. Codespy makes common
 high-signal patterns visible with one inspectable script and produces standard
-CI output without sending source to a service.
-
-Codespy serves:
-
-- **developers** checking a local change or unfamiliar repository;
-- **maintainers** establishing a lightweight, reviewable baseline;
-- **CI operators** producing SARIF and failing on high/critical findings;
-- **security reviewers** using fast pattern results to prioritize deeper manual,
-  semantic, dependency, and runtime analysis.
+CI output without sending source to a service. It serves developers checking a
+local change, maintainers establishing a reviewable baseline, CI operators
+producing SARIF and failing on high or critical findings, and security reviewers
+prioritizing deeper manual, semantic, dependency, and runtime analysis.
 
 ## Product boundaries
 
@@ -56,8 +52,8 @@ Codespy serves:
 - per-file size bound of 1 MB;
 - rules for common secrets, injection sinks, insecure configuration, quality,
   performance, deprecation, and supply-chain patterns;
-- severity filtering and fix explanations;
-- terminal, JSON, Markdown, and SARIF output;
+- severity filtering, fix explanations, and terminal, JSON, Markdown and SARIF
+  output;
 - a GitHub Action with configurable report threshold and SARIF upload;
 - organization baselines and suppression governance as a separate policy layer.
 
@@ -71,13 +67,12 @@ Codespy serves:
   generated flows, runtime configuration, encoded values, or framework-specific
   semantics.
 - Fix text is guidance, not an automatic patch or proof that remediation is
-  complete.
-- The numeric score and letter grade summarize this scanner's findings only;
-  they are not an industry rating or risk acceptance decision.
+  complete. The numeric score and letter grade summarize this scanner's findings
+  only; they are not an industry rating or risk acceptance decision.
 - Local scanning must remain complete without a Wisent account, hosted service,
-  paid rule pack, or repository size limit.
-- Hosted scheduling, cross-repository policy, suppressions, triage, retained
-  evidence, and support are separate operated-service boundaries.
+  paid rule pack, or repository size limit. Hosted scheduling, cross-repository
+  policy, suppressions, triage, retained evidence, and support are separate
+  operated-service boundaries.
 
 ### Supported environment and current capability
 
@@ -85,40 +80,17 @@ Codespy serves:
 |---|---|---|
 | Local scanner | Python 3.10+ standard library | Implemented |
 | Offline operation | readable local source | Implemented; no network call |
-| Formats | terminal, JSON, Markdown, SARIF | Implemented |
 | GitHub Action | GitHub Actions runner | Implemented repository action |
 | Syntax/data-flow analysis | language parser and semantic engine | Not implemented |
 | Hosted continuous scanning/policy | organization service | Separate service surface |
 
 ## Core use cases
 
-### Scan a local repository
-
-- **Actor:** a developer.
-- **Initial state:** the source path is readable by Python.
-- **Outcome:** Codespy lists matching rules with severity, path, line, source
-  excerpt, and optional suggestion.
-- **Boundary:** it reads files but sends no source externally; ignored, large,
-  binary, unsupported, and semantically indirect cases may remain unseen.
-
-### Produce a review artifact
-
-- **Actor:** a maintainer or security reviewer.
-- **Initial state:** a target and minimum severity are selected.
-- **Outcome:** JSON, Markdown, or SARIF preserves findings for another tool or
-  reviewer.
-- **Boundary:** the artifact reports pattern matches at scan time; it does not
-  attest to repository identity, commit provenance, or remediation acceptance.
-
-### Gate a CI change
-
-- **Actor:** a repository administrator.
-- **Initial state:** the GitHub Action is pinned and workflow permissions are
-  reviewed.
-- **Outcome:** high or critical findings can fail the step and SARIF can be
-  uploaded to GitHub Code Scanning.
-- **Boundary:** CI policy must account for false positives, pinned action
-  revisions, changed rule semantics, and findings outside Codespy's scope.
+| Use case | Actor | Outcome | Boundary |
+|---|---|---|---|
+| Scan a local repository | developer | matching rules with severity, path, line, excerpt, and optional suggestion | reads files and sends no source; ignored, large, binary, unsupported, and semantically indirect cases stay unseen |
+| Produce a review artifact | maintainer or security reviewer | JSON, Markdown, or SARIF another tool or reviewer can read | pattern matches at scan time, with no claim about repository identity, provenance, or remediation |
+| Gate a CI change | repository administrator | high or critical findings fail the step; SARIF uploads to Code Scanning | policy must account for false positives, pinned action revisions, rule changes, and findings outside this scope |
 
 ## How Codespy works
 
@@ -143,12 +115,7 @@ acceptance.
 
 ## Quick start
 
-Clone and scan the checkout itself:
-
-### Prerequisites
-
-- Git;
-- Python 3.10 or newer.
+Clone and scan the checkout itself. You need Git and Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/wisent-ai/codespy.git
@@ -188,6 +155,39 @@ python3 codespy.py [path]
 - `--fix` displays rule suggestions; it never changes source.
 - High or critical findings in the filtered result produce exit status `1`.
 
+## Repository layout
+
+`codespy.py` is the release: one file to download, read, and run. It is rendered
+from the package rather than edited by hand, so the source stays readable:
+
+```text
+codespy_core/            scanner source
+  configuration.py       version, scanned file types, size limit
+  models.py              severities, categories, findings, scan result
+  rules/                 detection families; rules/__init__.py fixes their order
+  scanner.py             file collection and rule evaluation
+  reporting/             terminal, JSON, SARIF, Markdown, score
+  cli.py                 arguments, output selection, exit status
+tools/build_codespy.py   renders codespy.py from codespy_core
+tests/                   run.py plus one folder per area
+```
+
+```bash
+python3 tools/build_codespy.py          # rewrite codespy.py after editing the package
+python3 tools/build_codespy.py --check  # what CI runs; fails when codespy.py is stale
+python3 tests/run.py                    # every area
+python3 tests/run.py cli/commands       # one area
+```
+
+Rule order is part of the contract, because findings of equal severity, file and
+line keep it. `codespy_core/rules/__init__.py` declares that order once, and both
+the package and the rendered release read it from there.
+
+The `cli/commands` area runs the released file as a separate process and reads
+the reports it writes, so exit statuses and refusals are covered by tests rather
+than by description. `tests/surface.py` prints the public contract that the
+version gate compares against `released-surface.json`.
+
 ## Detection scope
 
 ### Secrets and credentials
@@ -215,19 +215,17 @@ Examples: broad exception handling, mutable Python defaults, empty catches,
 debug output, TODO markers, ORM-loop query patterns, and repeated regex
 compilation. These findings are maintainability signals, not all vulnerabilities.
 
-The rule catalogue and implementation live in [`codespy.py`](codespy.py).
-Document rule-ID and severity changes because they can alter CI gates.
+The rule catalogue lives in [`codespy_core/rules/`](codespy_core/rules) and ships
+inside [`codespy.py`](codespy.py). Document rule-ID and severity changes because
+they can alter CI gates.
 
 ## Output formats
 
-- **Terminal:** grouped human-readable findings and scanner-local score.
-- **JSON:** machine-readable metadata, counts, paths, lines, and findings.
-- **Markdown:** reviewable report tables with optional suggestions.
-- **SARIF:** static-analysis interchange for GitHub Code Scanning and compatible
-  viewers.
-
-Do not publish reports containing secret excerpts or private paths without
-redaction and access review.
+Terminal output groups findings for a person and prints the scanner-local score.
+JSON carries metadata, counts, paths, lines and findings; Markdown renders review
+tables with optional suggestions; SARIF feeds GitHub Code Scanning and compatible
+viewers. Do not publish reports containing secret excerpts or private paths
+without redaction and access review.
 
 ## GitHub Action
 
@@ -278,25 +276,23 @@ and other high-impact code even when Codespy is clean.
 
 ## Operational model
 
-- **Configuration:** CLI arguments or GitHub Action inputs; no credentials or
-  remote endpoint are required for local scanning.
-- **State:** no scanner database; reports and optional organization baselines are
-  external artifacts.
+- **Configuration and state:** CLI arguments or GitHub Action inputs, with no
+  credentials, remote endpoint or scanner database; reports and optional
+  organization baselines are external artifacts.
 - **Observability:** file/line counts, skipped files, categories, severity counts,
   findings, duration, and output status.
-- **Recovery:** retain the prior report and pinned scanner revision when rule
-  changes affect a gate; remove generated reports containing sensitive excerpts
-  according to repository policy.
-- **Cost:** local scanning is unmetered. Hosted scheduling, organization policy,
-  triage, retained evidence, and dedicated support are separate service units.
+- **Recovery and cost:** retain the prior report and pinned scanner revision when
+  rule changes affect a gate, and remove generated reports carrying sensitive
+  excerpts according to repository policy. Local scanning is unmetered; hosted
+  scheduling, organization policy, triage, retained evidence and dedicated
+  support are separate service units.
 
 ## Project status and support
 
-- **Maturity:** public development scanner, version `1.1.0`.
-- **Local contract:** zero-dependency offline scan and four report formats.
-- **Managed contract:** hosted continuous scanning, organization policy,
-  suppression governance, triage, retained evidence, and support are not
-  provided by the local script.
+- **Maturity:** public development scanner, version `1.1.0`, offering a
+  zero-dependency offline scan and four report formats. Hosted continuous
+  scanning, organization policy, suppression governance, triage, retained
+  evidence, and support are not provided by the local script.
 - **Issues:** [`wisent-ai/codespy`](https://github.com/wisent-ai/codespy/issues).
 - **Security:** use private GitHub Security Advisories; never paste a suspected
   secret, private source excerpt, proprietary path, or unredacted report into a

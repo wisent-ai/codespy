@@ -48,7 +48,7 @@ def format_terminal(result: ScanResult, show_fix: bool = False, use_color: bool 
     sc = result.severity_counts
     lines.append(f"{b}Findings:{r} {result.finding_count} total")
     for sev in ["critical", "high", "medium", "low", "info"]:
-        count = sc.get(sev, 0)
+        count = sc[sev]
         if count > 0:
             lines.append(f"  {c[sev]}{sev.upper():10s}{r} {count}")
     lines.append("")
@@ -78,7 +78,6 @@ def format_terminal(result: ScanResult, show_fix: bool = False, use_color: bool 
     # Score
     score = compute_score(result)
     grade = score_to_grade(score)
-    grade_color = c.get("info", "")
     if grade in ("A", "A+"):
         grade_color = "\033[32m" if use_color else ""
     elif grade in ("B", "B+"):

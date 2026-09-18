@@ -177,10 +177,11 @@ class ScanResult:
 
     @property
     def severity_counts(self):
-        counts = Counter()
+        """Every severity, present or not, so a report never has to guess a missing one."""
+        counts = {severity.value: 0 for severity in Severity}
         for f in self.findings:
             counts[f.severity.value] += 1
-        return dict(counts)
+        return counts
 
     @property
     def category_counts(self):
@@ -1146,7 +1147,7 @@ def format_terminal(result: ScanResult, show_fix: bool = False, use_color: bool 
     sc = result.severity_counts
     lines.append(f"{b}Findings:{r} {result.finding_count} total")
     for sev in ["critical", "high", "medium", "low", "info"]:
-        count = sc.get(sev, 0)
+        count = sc[sev]
         if count > 0:
             lines.append(f"  {c[sev]}{sev.upper():10s}{r} {count}")
     lines.append("")
@@ -1176,7 +1177,6 @@ def format_terminal(result: ScanResult, show_fix: bool = False, use_color: bool 
     # Score
     score = compute_score(result)
     grade = score_to_grade(score)
-    grade_color = c.get("info", "")
     if grade in ("A", "A+"):
         grade_color = "\033[32m" if use_color else ""
     elif grade in ("B", "B+"):
@@ -1206,6 +1206,9 @@ def format_sarif(result: ScanResult) -> str:
 
 # ─── Markdown report for review threads and job summaries.
 
+SEVERITY_MARKS = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
+
+
 def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     """Format scan results as Markdown."""
     lines = []
@@ -1229,10 +1232,9 @@ def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     lines.append(f"|----------|-------|")
     sc = result.severity_counts
     for sev in ["critical", "high", "medium", "low", "info"]:
-        count = sc.get(sev, 0)
+        count = sc[sev]
         if count > 0:
-            emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
-            lines.append(f"| {emoji[sev]} {sev.upper()} | {count} |")
+            lines.append(f"| {SEVERITY_MARKS[sev]} {sev.upper()} | {count} |")
     lines.append(f"")
 
     if not result.findings:
@@ -1251,8 +1253,7 @@ def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
         lines.append(f"### `{file_path}`")
         lines.append(f"")
         for f in file_findings:
-            emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
-            lines.append(f"- {emoji.get(f.severity.value, '')} **[{f.rule_id}] {f.title}** (L{f.line_number})")
+            lines.append(f"- {SEVERITY_MARKS[f.severity.value]} **[{f.rule_id}] {f.title}** (L{f.line_number})")
             lines.append(f"  - {f.description}")
             if show_fix and f.suggestion:
                 lines.append(f"  - 💡 **Fix:** {f.suggestion}")

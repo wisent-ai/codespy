@@ -6,6 +6,9 @@ from ..configuration import __version__
 from ..models import ScanResult
 from .scoring import compute_score, score_to_grade
 
+#: One mark per severity; every severity the model defines has one.
+SEVERITY_MARKS = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
+
 
 def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     """Format scan results as Markdown."""
@@ -30,10 +33,9 @@ def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
     lines.append(f"|----------|-------|")
     sc = result.severity_counts
     for sev in ["critical", "high", "medium", "low", "info"]:
-        count = sc.get(sev, 0)
+        count = sc[sev]
         if count > 0:
-            emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
-            lines.append(f"| {emoji[sev]} {sev.upper()} | {count} |")
+            lines.append(f"| {SEVERITY_MARKS[sev]} {sev.upper()} | {count} |")
     lines.append(f"")
 
     if not result.findings:
@@ -52,8 +54,7 @@ def format_markdown(result: ScanResult, show_fix: bool = False) -> str:
         lines.append(f"### `{file_path}`")
         lines.append(f"")
         for f in file_findings:
-            emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
-            lines.append(f"- {emoji.get(f.severity.value, '')} **[{f.rule_id}] {f.title}** (L{f.line_number})")
+            lines.append(f"- {SEVERITY_MARKS[f.severity.value]} **[{f.rule_id}] {f.title}** (L{f.line_number})")
             lines.append(f"  - {f.description}")
             if show_fix and f.suggestion:
                 lines.append(f"  - 💡 **Fix:** {f.suggestion}")

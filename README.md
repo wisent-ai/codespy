@@ -170,6 +170,7 @@ codespy_core/            scanner source
   cli.py                 arguments, output selection, exit status
 tools/build_codespy.py   renders codespy.py from codespy_core
 tests/                   run.py plus one folder per area
+.github/version-check/   the version gate's steps as scripts a laptop can run
 ```
 
 ```bash
@@ -186,7 +187,12 @@ the package and the rendered release read it from there.
 The `cli/commands` area runs the released file as a separate process and reads
 the reports it writes, so exit statuses and refusals are covered by tests rather
 than by description. `tests/surface.py` prints the public contract that the
-version gate compares against `released-surface.json`.
+version gate compares against `released-surface.json`. The gate's own steps
+live in `.github/version-check/` (`install-rule.sh`, `prove-refusal.sh`,
+`compare.sh`, `verify-baseline.sh`) and take `RUNNER_TEMP` from the
+environment, so `RUNNER_TEMP=build/tmp bash .github/version-check/compare.sh`
+runs the same comparison locally. In every report, `severity_counts` names all
+five severities, with `0` for the ones no finding carries.
 
 ## Detection scope
 

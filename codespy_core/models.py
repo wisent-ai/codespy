@@ -110,10 +110,11 @@ class ScanResult:
 
     @property
     def severity_counts(self):
-        counts = Counter()
+        """Every severity, present or not, so a report never has to guess a missing one."""
+        counts = {severity.value: 0 for severity in Severity}
         for f in self.findings:
             counts[f.severity.value] += 1
-        return dict(counts)
+        return counts
 
     @property
     def category_counts(self):

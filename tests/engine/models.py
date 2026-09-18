@@ -34,8 +34,10 @@ def test_scan_result_properties():
         Finding("R3", "T3", "D3", Severity.LOW, Category.QUALITY, "f.py", 3, "", "", ""),
     ]
     assert_eq(result.finding_count, 3, "Finding count")
-    assert_eq(result.severity_counts.get("high"), 2, "High severity count")
-    assert_eq(result.severity_counts.get("low"), 1, "Low severity count")
+    assert_eq(result.severity_counts["high"], 2, "High severity count")
+    assert_eq(result.severity_counts["low"], 1, "Low severity count")
+    assert_eq(result.severity_counts["critical"], 0, "A severity with no findings is counted as zero, not left out")
+    assert_eq(sorted(result.severity_counts), ["critical", "high", "info", "low", "medium"], "Every severity is present")
     assert_eq(result.category_counts.get("security"), 1, "Security category count")
 
 

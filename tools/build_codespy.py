@@ -50,6 +50,7 @@ MODULES = (
 RULES_AFTER = "models.py"
 
 HEADER = '''#!/usr/bin/env python3
+# Generated from codespy_core/ by tools/build_codespy.py; do not edit, render again.
 """
 codespy - Fast offline code security scanner & quality analyzer.
 

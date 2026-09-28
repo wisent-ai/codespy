@@ -8,6 +8,19 @@
     "pattern": "(?m)^version\\s*=\\s*\"(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+)\"\\s*$"
   },
   "platforms": {
+    "linux-amd64": {
+      "runner_platform": "linux-amd64",
+      "quality": [],
+      "build": {
+        "argv": ["cargo", "build", "--release"]
+      },
+      "tests": [
+        {"name": "version-gate", "argv": ["bash", "release/gate.sh"]}
+      ],
+      "stage": {
+        "target/release/codespy": "bin/codespy"
+      }
+    },
     "source": {
       "runner_platform": "linux-amd64",
       "quality": [],

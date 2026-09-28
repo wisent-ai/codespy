@@ -75,46 +75,40 @@ runs:
     - name: Run codespy scan
       id: scan
       shell: bash
+      # Inputs reach the shell as environment values and are passed as array
+      # elements, so a path or file name with spaces or shell characters stays
+      # one argument and is never run as code.
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        SEVERITY: ${{ inputs.severity }}
+        FORMAT: ${{ inputs.format }}
+        OUTPUT_FILE: ${{ inputs.output-file }}
+        SHOW_FIXES: ${{ inputs.show-fixes }}
+        FAIL_LEVEL: ${{ inputs.fail-on-findings }}
       run: |
-        # Build command
-        CMD="codespy ${{ inputs.path }}"
-        CMD="$CMD --severity ${{ inputs.severity }}"
-
-        # Add fix suggestions
-        if [ "${{ inputs.show-fixes }}" = "true" ]; then
-          CMD="$CMD --fix"
+        args=("$SCAN_PATH" --severity "$SEVERITY" --no-color)
+        if [ "$SHOW_FIXES" = "true" ]; then
+          args+=(--fix)
         fi
-
-        # Determine output format and file
-        FORMAT="${{ inputs.format }}"
-        OUTPUT_FILE="${{ inputs.output-file }}"
-
         if [ "$FORMAT" != "terminal" ]; then
-          CMD="$CMD --format $FORMAT"
+          args+=(--format "$FORMAT")
           if [ -n "$OUTPUT_FILE" ]; then
-            CMD="$CMD -o $OUTPUT_FILE"
+            args+=(-o "$OUTPUT_FILE")
           fi
         fi
 
-        CMD="$CMD --no-color"
-
         echo "::group::codespy scan command"
-        echo "$CMD"
+        printf '%q ' codespy "${args[@]}"
+        echo
         echo "::endgroup::"
 
-        # Run the scan and capture output
-        # Always generate JSON for metadata extraction
+        # The JSON report states the counts, score and grade. A report that was
+        # not written is a failed scan, not a clean one.
         JSON_TMP=$(mktemp)
-        codespy ${{ inputs.path }} \
-          --severity ${{ inputs.severity }} \
-          --format json \
-          -o "$JSON_TMP" \
-          --no-color >/dev/null 2>&1 || true
-
-        # Read the counts, score and grade the JSON report states. A report that
-        # was not written is a failed scan, not a clean one.
+        codespy "$SCAN_PATH" --severity "$SEVERITY" --format json -o "$JSON_TMP" --no-color \
+          >/dev/null 2>&1 || true
         if [ ! -s "$JSON_TMP" ]; then
-          echo "::error::codespy wrote no JSON report for ${{ inputs.path }}"
+          echo "::error::codespy wrote no JSON report for $SCAN_PATH"
           exit 1
         fi
         TOTAL=$(jq -r .total_findings "$JSON_TMP")
@@ -126,50 +120,47 @@ runs:
         GRADE=$(jq -r .security_grade "$JSON_TMP")
         rm -f "$JSON_TMP"
 
-        echo "total_findings=$TOTAL" >> $GITHUB_OUTPUT
-        echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
-        echo "high_count=$HIGH" >> $GITHUB_OUTPUT
-        echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
-        echo "low_count=$LOW" >> $GITHUB_OUTPUT
-        echo "security_score=$SCORE" >> $GITHUB_OUTPUT
-        echo "security_grade=$GRADE" >> $GITHUB_OUTPUT
+        {
+          echo "total_findings=$TOTAL"
+          echo "critical_count=$CRITICAL"
+          echo "high_count=$HIGH"
+          echo "medium_count=$MEDIUM"
+          echo "low_count=$LOW"
+          echo "security_score=$SCORE"
+          echo "security_grade=$GRADE"
+        } >> "$GITHUB_OUTPUT"
 
-        # Now run the actual scan with the requested format
+        # The scan in the requested format. Exit 1 only means findings at high
+        # or above, which the threshold below decides on; exit 2 is a scan that
+        # could not read everything it selected.
         set +e
-        eval $CMD
+        codespy "${args[@]}"
         SCAN_EXIT=$?
         set -e
+        if [ "$SCAN_EXIT" -eq 2 ]; then
+          echo "::error::codespy could not read part of $SCAN_PATH, so the scan is incomplete"
+          exit 1
+        fi
 
-        # Set SARIF file output
         if [ "$FORMAT" = "sarif" ] && [ -f "$OUTPUT_FILE" ]; then
-          echo "sarif_file=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+          echo "sarif_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
         fi
 
-        # Create summary
-        echo "## codespy Security Scan Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Security Score | **$SCORE/100** (Grade: $GRADE) |" >> $GITHUB_STEP_SUMMARY
-        echo "| Total Findings | $TOTAL |" >> $GITHUB_STEP_SUMMARY
-        if [ "$CRITICAL" -gt 0 ]; then
-          echo "| :red_circle: Critical | **$CRITICAL** |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$HIGH" -gt 0 ]; then
-          echo "| :orange_circle: High | **$HIGH** |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$MEDIUM" -gt 0 ]; then
-          echo "| :yellow_circle: Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-        fi
-        if [ "$LOW" -gt 0 ]; then
-          echo "| :large_blue_circle: Low | $LOW |" >> $GITHUB_STEP_SUMMARY
-        fi
-        echo "" >> $GITHUB_STEP_SUMMARY
+        {
+          echo "## codespy Security Scan Results"
+          echo ""
+          echo "| Metric | Value |"
+          echo "|--------|-------|"
+          echo "| Security Score | **$SCORE/100** (Grade: $GRADE) |"
+          echo "| Total Findings | $TOTAL |"
+          if [ "$CRITICAL" -gt 0 ]; then echo "| :red_circle: Critical | **$CRITICAL** |"; fi
+          if [ "$HIGH" -gt 0 ]; then echo "| :orange_circle: High | **$HIGH** |"; fi
+          if [ "$MEDIUM" -gt 0 ]; then echo "| :yellow_circle: Medium | $MEDIUM |"; fi
+          if [ "$LOW" -gt 0 ]; then echo "| :large_blue_circle: Low | $LOW |"; fi
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
 
-        # Determine if we should fail
-        FAIL_LEVEL="${{ inputs.fail-on-findings }}"
         SHOULD_FAIL=0
-
         if [ "$FAIL_LEVEL" = "critical" ] && [ "$CRITICAL" -gt 0 ]; then
           SHOULD_FAIL=1
         elif [ "$FAIL_LEVEL" = "high" ] && [ $((CRITICAL + HIGH)) -gt 0 ]; then
@@ -179,7 +170,6 @@ runs:
         elif [ "$FAIL_LEVEL" = "low" ] && [ "$TOTAL" -gt 0 ]; then
           SHOULD_FAIL=1
         fi
-
         if [ "$SHOULD_FAIL" -eq 1 ]; then
           echo "::error::codespy found findings at or above '$FAIL_LEVEL' severity. Score: $SCORE/100 ($GRADE)"
           exit 1

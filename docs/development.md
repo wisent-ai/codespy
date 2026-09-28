@@ -14,7 +14,8 @@ src/
   rules/mod.rs           loads the table and compiles each pattern
   scanner/               file collection, the file-type table, rule evaluation
   report/                terminal, JSON, SARIF, Markdown, score and grade
-.github/version-check/   the version gate's steps as scripts a laptop can run
+release/gate.sh          the version gate, run by the release after its build
+release/version-check/   the gate's steps as scripts
 ```
 
 Rule order is part of the contract, because findings of equal severity, file and
@@ -29,11 +30,13 @@ severities, languages, scanned suffixes, formats, the command line and the
 action's inputs and outputs. It reads them from the program itself, so the
 surface is the one the binary actually has.
 
-The gate's own steps live in `.github/version-check/` (`install-rule.sh`,
-`prove-refusal.sh`, `compare.sh`, `verify-baseline.sh`, `baseline.sh`) and take
-`RUNNER_TEMP` from the environment, so
-`RUNNER_TEMP=build/tmp bash .github/version-check/compare.sh` runs the same
-comparison locally. `baseline.sh` regenerates `released-surface.json` from the
+The version gate runs in the release, not per push: `.wisent-release.json`
+builds `codespy` once and then runs `release/gate.sh`, which reads that built
+binary's `--surface`, installs the shared rule, proves the rule can refuse, and
+compares the declared version with the change. Its steps live in
+`release/version-check/` (`install-rule.sh`, `prove-refusal.sh`, `compare.sh`,
+`verify-baseline.sh`, `baseline.sh`), with scratch in `target/version-gate`.
+`baseline.sh` regenerates `released-surface.json` from the
 best published artifact; releases from before the Rust port (the `codespy.py`
 tags) are read from the surface the baseline already records for them. In every
 report, `severity_counts` names all five severities, with `0` for the ones no

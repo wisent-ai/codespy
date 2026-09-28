@@ -25,10 +25,10 @@ set -euo pipefail
 # when its marker names exactly that artifact.
 #
 # Usage:
-#   bash .github/version-check/baseline.sh            # rewrite released-surface.json
-#   bash .github/version-check/baseline.sh --stdout   # print it, touch nothing
-#   bash .github/version-check/baseline.sh --dry-run  # print the marker only
-#   bash .github/version-check/baseline.sh --declared <ref>  # the version <ref> declares
+#   bash release/version-check/baseline.sh            # rewrite released-surface.json
+#   bash release/version-check/baseline.sh --stdout   # print it, touch nothing
+#   bash release/version-check/baseline.sh --dry-run  # print the marker only
+#   bash release/version-check/baseline.sh --declared <ref>  # the version <ref> declares
 
 # The version a tree declares: Cargo.toml's package version, or the
 # __version__ of a pre-port codespy.py.
@@ -109,7 +109,8 @@ surface_of() {
         "whose own program states its surface." >&2
       return 1
     fi
-    cargo run --quiet -- --surface action.yml | jq .surface
+    # The binary the release build already made; nothing is compiled here.
+    "${CODESPY_BIN:-target/release/codespy}" --surface action.yml | jq .surface
   elif [ "$(jq -r '.source | split(" ") | first' released-surface.json)" = "$marker" ]; then
     jq .surface released-surface.json
   else

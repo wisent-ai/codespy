@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 released="$(jq -r .version released-surface.json)"
-declared="$(bash .github/version-check/baseline.sh --declared HEAD)"
+declared="$(bash release/version-check/baseline.sh --declared HEAD)"
 echo "released: $released"
 echo "declared: $declared"
 

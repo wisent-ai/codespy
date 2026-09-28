@@ -7,7 +7,7 @@ set -euo pipefail
 # Those are two different resolutions, and only one of them was proved. Drop,
 # misspell or reorder the GITHUB_PATH line and the install step still passes
 # while a stranger answers from here on -- and a stranger that always answers
-# `internal` sails through the comparison below, because while codespy.py
+# `internal` sails through the comparison below, because while Cargo.toml
 # declares the released version `internal` IS the passing branch. So the ability
 # to refuse is demanded again, from the same resolution the verdict below is read
 # from, immediately before it is read.

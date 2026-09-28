@@ -1,11 +1,13 @@
 //! `codespy`: command-line arguments, output selection, and the scan exit
 //! status.
 
+mod surface;
+
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{ArgAction, CommandFactory, Parser, ValueEnum};
 
 use codespy::model::Severity;
 use codespy::report::{format_json, format_markdown, format_sarif, format_terminal};
@@ -49,6 +51,25 @@ struct Arguments {
     /// Print the version
     #[arg(long, short = 'v', action = ArgAction::Version)]
     version: Option<bool>,
+    /// Print the public surface, read against this action manifest, as JSON
+    /// for the version gate; nothing is scanned.
+    #[arg(long, hide = true, value_name = "ACTION_YML")]
+    surface: Option<PathBuf>,
+}
+
+/// Print the public surface for the version gate.
+fn print_surface(action_manifest: &std::path::Path) -> ExitCode {
+    match surface::surface::<Format>(&Arguments::command(), action_manifest) {
+        Ok(names) => {
+            let document = serde_json::json!({ "surface": names });
+            println!("{}", serde_json::to_string_pretty(&document).expect("a JSON value always serializes"));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("Error: cannot read {}: {error}", action_manifest.display());
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// The minimum severity a `--severity` value names.
@@ -62,6 +83,9 @@ fn parse_severity(value: &str) -> Result<Severity, String> {
 
 fn main() -> ExitCode {
     let arguments = Arguments::parse();
+    if let Some(action_manifest) = &arguments.surface {
+        return print_surface(action_manifest);
+    }
     if !arguments.path.exists() {
         eprintln!("Error: Path '{}' does not exist.", arguments.path.display());
         return ExitCode::FAILURE;

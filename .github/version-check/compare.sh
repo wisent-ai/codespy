@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 released="$(jq -r .version released-surface.json)"
-declared="$(awk -F'"' '/^__version__/{print $2; exit}' codespy.py)"
+declared="$(bash .github/version-check/baseline.sh --declared HEAD)"
 echo "released: $released"
 echo "declared: $declared"
 
@@ -17,13 +17,13 @@ required="$(printf '%s' "$verdict" | jq -r .next)"
 
 if [ "$declared" = "$released" ]; then
   if [ "$change" != "internal" ]; then
-    echo "::error::The public contract changed ($change) but codespy.py still" \
+    echo "::error::The public contract changed ($change) but Cargo.toml still" \
       "declares the released version $released. The next version must be $required."
     false
   fi
   echo "Nothing new released and the contract is unchanged."
 elif [ "$declared" != "$required" ]; then
-  echo "::error::codespy.py declares $declared, but a $change change to" \
+  echo "::error::Cargo.toml declares $declared, but a $change change to" \
     "$released requires $required."
   false
 else

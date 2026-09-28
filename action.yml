@@ -34,10 +34,6 @@ inputs:
     description: 'Automatically upload SARIF results to GitHub Code Scanning (requires sarif format)'
     required: false
     default: 'true'
-  python-version:
-    description: 'Python version to use'
-    required: false
-    default: '3.12'
 
 outputs:
   total-findings:
@@ -68,17 +64,20 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python-version }}
+    - name: Install codespy
+      # The scanner is the Rust program in this repository, built once per job
+      # from the exact ref the workflow pinned.
+      shell: bash
+      run: |
+        cargo install --quiet --path "${{ github.action_path }}" --root "$RUNNER_TEMP/codespy"
+        echo "$RUNNER_TEMP/codespy/bin" >> "$GITHUB_PATH"
 
     - name: Run codespy scan
       id: scan
       shell: bash
       run: |
         # Build command
-        CMD="python3 ${{ github.action_path }}/codespy.py ${{ inputs.path }}"
+        CMD="codespy ${{ inputs.path }}"
         CMD="$CMD --severity ${{ inputs.severity }}"
 
         # Add fix suggestions
@@ -106,25 +105,26 @@ runs:
         # Run the scan and capture output
         # Always generate JSON for metadata extraction
         JSON_TMP=$(mktemp)
-        python3 ${{ github.action_path }}/codespy.py ${{ inputs.path }} \
+        codespy ${{ inputs.path }} \
           --severity ${{ inputs.severity }} \
           --format json \
           -o "$JSON_TMP" \
-          --no-color 2>/dev/null || true
+          --no-color >/dev/null 2>&1 || true
 
-        # Extract metadata from JSON output
-        if [ -f "$JSON_TMP" ]; then
-          TOTAL=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('total_findings', 0))" 2>/dev/null || echo "0")
-          CRITICAL=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('critical', 0))" 2>/dev/null || echo "0")
-          HIGH=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('high', 0))" 2>/dev/null || echo "0")
-          MEDIUM=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('medium', 0))" 2>/dev/null || echo "0")
-          LOW=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('severity_counts', {}).get('low', 0))" 2>/dev/null || echo "0")
-          SCORE=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('security_score', 100))" 2>/dev/null || echo "100")
-          GRADE=$(python3 -c "import json; d=json.load(open('$JSON_TMP')); print(d.get('security_grade', 'A+'))" 2>/dev/null || echo "A+")
-          rm -f "$JSON_TMP"
-        else
-          TOTAL=0; CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; SCORE=100; GRADE="A+"
+        # Read the counts, score and grade the JSON report states. A report that
+        # was not written is a failed scan, not a clean one.
+        if [ ! -s "$JSON_TMP" ]; then
+          echo "::error::codespy wrote no JSON report for ${{ inputs.path }}"
+          exit 1
         fi
+        TOTAL=$(jq -r .total_findings "$JSON_TMP")
+        CRITICAL=$(jq -r .severity_counts.critical "$JSON_TMP")
+        HIGH=$(jq -r .severity_counts.high "$JSON_TMP")
+        MEDIUM=$(jq -r .severity_counts.medium "$JSON_TMP")
+        LOW=$(jq -r .severity_counts.low "$JSON_TMP")
+        SCORE=$(jq -r .security_score "$JSON_TMP")
+        GRADE=$(jq -r .security_grade "$JSON_TMP")
+        rm -f "$JSON_TMP"
 
         echo "total_findings=$TOTAL" >> $GITHUB_OUTPUT
         echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT

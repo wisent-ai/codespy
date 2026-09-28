@@ -53,10 +53,11 @@ jobs:
         run: bash .github/version-check/install-rule.sh
 
       - name: Read the public surface
-        # No dependencies: the surface is read out of codespy.py with ast, so this
-        # stays cheap and never runs the scanner. A module that does not parse fails
-        # the step rather than silently shrinking the surface.
-        run: python3 tests/surface.py > "$RUNNER_TEMP/candidate.json"
+        # The program states its own surface: its rule table, file-type table and
+        # argument declaration, plus the action manifest it is given. Nothing is
+        # scanned. A binary that does not build fails the step rather than
+        # silently shrinking the surface.
+        run: cargo run --quiet -- --surface action.yml > "$RUNNER_TEMP/candidate.json"
 
       - name: Prove this gate can still refuse
         run: bash .github/version-check/prove-refusal.sh

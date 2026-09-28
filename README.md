@@ -27,15 +27,14 @@ secure.
 [GitHub Action](#github-action) · [Repository layout](#repository-layout) ·
 [Canonical repository](https://github.com/wisent-ai/codespy)
 
-Current scanner version: `1.1.0`. The release is one Python file with no runtime
-package dependencies and supports Python 3.10 or newer. That file is rendered
-from `codespy_core/`; see [Repository layout](#repository-layout).
+Current scanner version: `2.0.0`. The release is one Rust program, `codespy`,
+built from this repository with Cargo; see [Repository layout](#repository-layout).
 
 ## Problem and intended users
 
 Many repositories need a security baseline before a team can deploy a larger
 analyzer, provision cloud access, or upload source. Codespy makes common
-high-signal patterns visible with one inspectable script and produces standard
+high-signal patterns visible with one inspectable program and produces standard
 CI output without sending source to a service. It serves developers checking a
 local change, maintainers establishing a reviewable baseline, CI operators
 producing SARIF and failing on high or critical findings, and security reviewers
@@ -78,7 +77,7 @@ prioritizing deeper manual, semantic, dependency, and runtime analysis.
 
 | Surface | Requirement | Current state |
 |---|---|---|
-| Local scanner | Python 3.10+ standard library | Implemented |
+| Local scanner | Rust toolchain to build; the binary has no runtime dependency | Implemented |
 | Offline operation | readable local source | Implemented; no network call |
 | GitHub Action | GitHub Actions runner | Implemented repository action |
 | Syntax/data-flow analysis | language parser and semantic engine | Not implemented |
@@ -109,38 +108,31 @@ local path
    terminal JSON   Markdown    SARIF
 ```
 
-No source file is uploaded by `codespy.py`. The selected repository remains the
+No source file is uploaded by `codespy`. The selected repository remains the
 source of truth. A human or higher-fidelity analyzer owns final triage and risk
 acceptance.
 
 ## Quick start
 
-Clone and scan the checkout itself. You need Git and Python 3.10 or newer.
+Clone, build and scan the checkout itself. You need Git and a Rust toolchain.
 
 ```bash
 git clone https://github.com/wisent-ai/codespy.git
 cd codespy
-python3 codespy.py --version
-python3 codespy.py . --format sarif --output codespy-results.sarif --severity medium
+cargo install --path .
+codespy --version
+codespy . --format sarif --output codespy-results.sarif --severity medium
 ```
 
-Expected result: the first command prints `codespy 1.1.0`; the second writes a
+Expected result: `codespy --version` prints `codespy 2.0.0`; the scan writes a
 SARIF report. Exit status is `1` when the filtered result contains a high or
 critical finding and `0` otherwise. A non-zero finding status is scan output,
 not necessarily a scanner crash.
 
-For a temporary one-file download, verify the source and release coordinate
-before execution:
-
-```bash
-curl -fLO https://raw.githubusercontent.com/wisent-ai/codespy/main/codespy.py
-python3 codespy.py /path/to/project --fix
-```
-
 ## Primary interfaces
 
 ```text
-python3 codespy.py [path]
+codespy [path]
   --format, -f terminal|json|sarif|markdown
   --severity, -s info|low|medium|high|critical
   --fix
@@ -157,9 +149,11 @@ python3 codespy.py [path]
 
 ## Repository layout
 
-`codespy.py` is the release, rendered from `codespy_core/`; the layout, the render and
-test commands, the rule-order contract and the version gate are in
-[docs/development.md](docs/development.md).
+`src/` holds the program: `model/` (severities, categories, findings, scan
+result), `rules/table.json` (the rule catalogue, in released order),
+`scanner/` (file collection and rule evaluation), `report/` (terminal, JSON,
+SARIF, Markdown, score) and `main.rs` (the command line). The rule-order
+contract and the version gate are in [docs/development.md](docs/development.md).
 
 ## Detection scope
 
@@ -188,14 +182,15 @@ Examples: broad exception handling, mutable Python defaults, empty catches,
 debug output, TODO markers, ORM-loop query patterns, and repeated regex
 compilation. These findings are maintainability signals, not all vulnerabilities.
 
-The rule catalogue lives in [`codespy_core/rules/`](codespy_core/rules) and ships
-inside [`codespy.py`](codespy.py). Document rule-ID and severity changes because
-they can alter CI gates.
+The rule catalogue lives in [`src/rules/table.json`](src/rules/table.json) and is
+compiled into the program. Document rule-ID and severity changes because they
+can alter CI gates.
 
 ## Output formats
 
 Terminal output groups findings for a person and prints the scanner-local score.
-JSON carries metadata, counts, paths, lines and findings; Markdown renders review
+JSON carries metadata, counts, paths, lines, findings, and the score and grade;
+Markdown renders review
 tables with optional suggestions; SARIF feeds GitHub Code Scanning and compatible
 viewers. Do not publish reports containing secret excerpts or private paths
 without redaction and access review.
@@ -205,7 +200,7 @@ without redaction and access review.
 Minimal workflow step:
 
 ```yaml
-- uses: wisent-ai/codespy@v1
+- uses: wisent-ai/codespy@v2
 ```
 
 A more explicit repository gate:
@@ -214,7 +209,7 @@ A more explicit repository gate:
 - uses: actions/checkout@v4
 - name: Run Codespy
   id: codespy
-  uses: wisent-ai/codespy@v1
+  uses: wisent-ai/codespy@v2
   with:
     path: .
     severity: medium
@@ -235,9 +230,12 @@ A more explicit repository gate:
 | `show-fixes` | `true` | include suggestions |
 | `upload-sarif` | `true` | upload SARIF when permissions allow |
 
-The action exposes total, critical, and high counts plus the scanner-local score
-and grade. Pin a full commit SHA when your supply-chain policy requires an
-immutable action revision.
+The action builds `codespy` from the pinned ref with Cargo (GitHub-hosted
+runners carry a Rust toolchain) and exposes total, critical, high, medium and
+low counts plus the scanner-local score and grade, read from the JSON report.
+Version 2 dropped the `python-version` input along with the Python scanner.
+Pin a full commit SHA when your supply-chain policy requires an immutable action
+revision.
 
 ## Baselines and remediation
 
@@ -262,10 +260,10 @@ and other high-impact code even when Codespy is clean.
 
 ## Project status and support
 
-- **Maturity:** public development scanner, version `1.1.0`, offering a
-  zero-dependency offline scan and four report formats. Hosted continuous
-  scanning, organization policy, suppression governance, triage, retained
-  evidence, and support are not provided by the local script.
+- **Maturity:** public development scanner, version `2.0.0`, offering an
+  offline scan and four report formats. Hosted continuous scanning,
+  organization policy, suppression governance, triage, retained evidence, and
+  support are not provided by the local program.
 - **Issues:** [`wisent-ai/codespy`](https://github.com/wisent-ai/codespy/issues).
 - **Security:** use private GitHub Security Advisories; never paste a suspected
   secret, private source excerpt, proprietary path, or unredacted report into a

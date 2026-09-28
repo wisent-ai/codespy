@@ -25,6 +25,17 @@ struct Table {
 static LANGUAGES: LazyLock<Table> =
     LazyLock::new(|| serde_json::from_str(TABLE).expect("the file-type table is valid JSON"));
 
+/// Every language a scan reads, with the file suffixes that select it. Only
+/// suffixes are listed: a bare name in the extension table never equals a
+/// suffix, so it opens nothing.
+pub fn scanned_suffixes() -> impl Iterator<Item = (&'static str, Vec<&'static str>)> {
+    let table: &'static Table = &LANGUAGES;
+    table.extensions.iter().map(|(language, extensions)| {
+        let suffixes = extensions.iter().filter(|name| name.starts_with('.')).map(String::as_str).collect();
+        (language.as_str(), suffixes)
+    })
+}
+
 /// The language of a file from its name, or `None` when a scan does not
 /// read that kind of file.
 pub fn detect_language(path: &Path) -> Option<&'static str> {

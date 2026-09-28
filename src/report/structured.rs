@@ -6,12 +6,20 @@ use serde_json::Value;
 
 use crate::model::ScanResult;
 
+use super::{compute_score, score_to_grade};
+
 /// The first code point JSON writes as an escape rather than as itself.
 const FIRST_NON_ASCII: u32 = 0x80;
 
-/// Format scan results as JSON.
+/// Format scan results as JSON. The score and grade close the document: the
+/// GitHub Action reads them for its `security-score` and `security-grade`
+/// outputs, which had no source before and always read 100 and A+.
 pub fn format_json(result: &ScanResult) -> String {
-    pretty_ascii(&result.to_json())
+    let mut document = result.to_json();
+    let score = compute_score(result);
+    document["security_score"] = score.into();
+    document["security_grade"] = score_to_grade(score).into();
+    pretty_ascii(&document)
 }
 
 /// Format scan results as SARIF 2.1.0.

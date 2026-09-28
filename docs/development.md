@@ -1,38 +1,41 @@
 # Development
 
-`codespy.py` is the release: one file to download, read, and run. It is rendered
-from the package rather than edited by hand, so the source stays readable:
+`codespy` is one Rust program. The GitHub Action builds it from the pinned ref
+with `cargo install --path`, and the fleet release reads its version from
+`Cargo.toml`.
 
 ```text
-codespy_core/            scanner source
-  configuration.py       version, scanned file types, size limit
-  models.py              severities, categories, findings, scan result
-  rules/                 detection families; rules/__init__.py fixes their order
-  scanner.py             file collection and rule evaluation
-  reporting/             terminal, JSON, SARIF, Markdown, score
-  cli.py                 arguments, output selection, exit status
-tools/build_codespy.py   renders codespy.py from codespy_core
-tests/                   run.py plus one folder per area
+src/
+  main.rs                arguments, output selection, exit status
+  surface.rs             the public surface the version gate compares (--surface)
+  identity.rs            name, version, SARIF identity
+  model/                 severities, categories, findings, scan result
+  rules/table.json       the rule catalogue, in released order
+  rules/mod.rs           loads the table and compiles each pattern
+  scanner/               file collection, the file-type table, rule evaluation
+  report/                terminal, JSON, SARIF, Markdown, score and grade
 .github/version-check/   the version gate's steps as scripts a laptop can run
 ```
 
-```bash
-python3 tools/build_codespy.py          # rewrite codespy.py after editing the package
-python3 tools/build_codespy.py --check  # what CI runs; fails when codespy.py is stale
-python3 tests/run.py                    # every area
-python3 tests/run.py cli/commands       # one area
-```
-
 Rule order is part of the contract, because findings of equal severity, file and
-line keep it. `codespy_core/rules/__init__.py` declares that order once, and both
-the package and the rendered release read it from there.
+line keep it. `src/rules/table.json` lists the rules in that order, and the
+scanner evaluates them in the order they are listed. Patterns are matched
+case-insensitively with `^` and `$` at line boundaries, with lookaround
+available, as the rules were written for.
 
-The `cli/commands` area runs the released file as a separate process and reads
-the reports it writes, so exit statuses and refusals are covered by tests rather
-than by description. `tests/surface.py` prints the public contract that the
-version gate compares against `released-surface.json`. The gate's own steps
-live in `.github/version-check/` (`install-rule.sh`, `prove-refusal.sh`,
-`compare.sh`, `verify-baseline.sh`) and take `RUNNER_TEMP` from the
-environment, so `RUNNER_TEMP=build/tmp bash .github/version-check/compare.sh`
-runs the same comparison locally. In every report, `severity_counts` names all
-five severities, with `0` for the ones no finding carries.
+`codespy --surface action.yml` prints the public contract that the version gate
+compares against `released-surface.json`: rule ids, the categories rules emit,
+severities, languages, scanned suffixes, formats, the command line and the
+action's inputs and outputs. It reads them from the program itself, so the
+surface is the one the binary actually has.
+
+The gate's own steps live in `.github/version-check/` (`install-rule.sh`,
+`prove-refusal.sh`, `compare.sh`, `verify-baseline.sh`, `baseline.sh`) and take
+`RUNNER_TEMP` from the environment, so
+`RUNNER_TEMP=build/tmp bash .github/version-check/compare.sh` runs the same
+comparison locally. `baseline.sh` regenerates `released-surface.json` from the
+best published artifact; releases from before the Rust port (the `codespy.py`
+tags) are read from the surface the baseline already records for them. In every
+report, `severity_counts` names all five severities, with `0` for the ones no
+finding carries; the JSON report also states `security_score` and
+`security_grade`, which the Action publishes as outputs.

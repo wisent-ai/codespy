@@ -11,7 +11,7 @@ use std::time::Instant;
 use crate::model::{Finding, ScanResult, Severity};
 use crate::rules::{rules, Rule};
 
-pub use files::{collect_files, detect_language, MAX_FILE_SIZE};
+pub use files::{collect_files, detect_language, scanned_suffixes, MAX_FILE_SIZE};
 
 /// Milliseconds in a second, for the duration the report states.
 const MILLISECONDS_PER_SECOND: f64 = 1000.0;

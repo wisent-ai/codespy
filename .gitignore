@@ -8,3 +8,4 @@ dist/
 build/
 .env
 *.sarif
+/target/

@@ -1,0 +1,15 @@
+[package]
+name = "codespy"
+version = "1.1.0"
+edition = "2021"
+description = "Fast, offline code security scanner and quality analyzer."
+license = "MIT"
+repository = "https://github.com/wisent-ai/codespy"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

@@ -2,6 +2,7 @@
 //! status.
 
 mod surface;
+mod version_rule;
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -85,6 +86,10 @@ fn parse_severity(value: &str) -> Result<Severity, String> {
 }
 
 fn main() -> ExitCode {
+    let mut raw = std::env::args_os().skip(1).peekable();
+    if raw.peek().is_some_and(|first| first == version_rule::FLAG) {
+        return version_rule::run(raw.skip(1));
+    }
     let arguments = Arguments::parse();
     if let Some(action_manifest) = &arguments.surface {
         return print_surface(action_manifest);

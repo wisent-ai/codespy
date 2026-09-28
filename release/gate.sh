@@ -40,7 +40,6 @@ cd "$root"
 export RUNNER_TEMP="$root/target/version-gate"
 rm -rf "$RUNNER_TEMP"
 mkdir -p "$RUNNER_TEMP"
-export GITHUB_PATH="$RUNNER_TEMP/path"
 
 # Tags and full history, which every later read of a ref depends on.
 if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
@@ -49,9 +48,7 @@ else
   git fetch --force --tags
 fi
 
-bash release/version-check/install-rule.sh
-export PATH="$RUNNER_TEMP/rule/bin:$PATH"
+bash release/version-check/prove-rule.sh
 "$CODESPY_BIN" --surface action.yml > "$RUNNER_TEMP/candidate.json"
-bash release/version-check/prove-refusal.sh
 bash release/version-check/compare.sh
 bash release/version-check/verify-baseline.sh

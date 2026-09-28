@@ -14,6 +14,7 @@ src/
   rules/mod.rs           loads the table and compiles each pattern
   scanner/               file collection, the file-type table, rule evaluation
   report/                terminal, JSON, SARIF, Markdown, score and grade
+  version_rule/          the fleet's versioning rule (--version-rule), for the gate
 release/gate.sh          the version gate, run by the release after its build
 release/version-check/   the gate's steps as scripts
 ```
@@ -32,10 +33,15 @@ surface is the one the binary actually has.
 
 The version gate runs in the release, not per push: `.wisent-release.json`
 builds `codespy` once and then runs `release/gate.sh`, which reads that built
-binary's `--surface`, installs the shared rule, proves the rule can refuse, and
-compares the declared version with the change. Its steps live in
-`release/version-check/` (`install-rule.sh`, `prove-refusal.sh`, `compare.sh`,
-`verify-baseline.sh`, `baseline.sh`), with scratch in `target/version-gate`.
+binary's `--surface` and asks the same binary's port of the fleet's versioning
+rule (`codespy --version-rule decide|order|conformance`, `src/version_rule/`,
+AutoVersion SPEC v0.1.0, the way brama, jeden and oko carry theirs; nothing is
+installed). `prove-rule.sh` first requires the port to reproduce every case of
+the SPEC's pinned FIXTURES.md and to answer `internal` for the committed
+surface against itself and `breaking` with one name removed; `compare.sh` then
+checks the declared version against the change. The steps live in
+`release/version-check/` (`prove-rule.sh`, `compare.sh`, `verify-baseline.sh`,
+`baseline.sh`), with scratch in `target/version-gate`.
 On a release worker the source is an unpacked archive without `.git`; there
 the gate clones the Cargo.toml `repository` at `WISENT_SOURCE_COMMIT` into
 `target/version-gate-source` and runs from that clone, still against the

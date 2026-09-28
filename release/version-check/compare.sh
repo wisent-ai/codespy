@@ -5,11 +5,10 @@ declared="$(bash release/version-check/baseline.sh --declared HEAD)"
 echo "released: $released"
 echo "declared: $declared"
 
-verdict="$(autoversion decide \
+verdict="$("$CODESPY_BIN" --version-rule decide \
   --current "$released" \
   --published-surface released-surface.json \
-  --candidate-surface "$RUNNER_TEMP/candidate.json" \
-  --json)"
+  --candidate-surface "$RUNNER_TEMP/candidate.json")"
 echo "$verdict"
 
 change="$(printf '%s' "$verdict" | jq -r .change)"

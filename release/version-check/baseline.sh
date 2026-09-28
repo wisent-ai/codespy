@@ -75,7 +75,8 @@ full_version_tag() {
 }
 
 newer() {
-  [ "$(autoversion order --older "$1" --newer "$2" --json | jq -r .is_newer)" = True ]
+  [ "$("${CODESPY_BIN:-target/release/codespy}" --version-rule order --older "$1" \
+    --newer "$2" | jq -r .is_newer)" = true ]
 }
 
 best_tag=""

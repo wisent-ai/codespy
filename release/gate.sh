@@ -8,7 +8,8 @@ set -euo pipefail
 # findings with, the categories and severities it reports, the files it agrees
 # to open, its output formats, its command line and the Action's inputs and
 # outputs. The rule itself lives once for the whole fleet
-# (https://github.com/lbartoszcze/AutoVersion); this repository supplies its
+# (https://github.com/lbartoszcze/AutoVersion) and is answered by Stado's one
+# port of it, `stado release version-gate`; this repository supplies only its
 # surface and the version it declares.
 #
 # Where the baseline's provenance comes from depends on where the gate runs. In

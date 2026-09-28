@@ -14,7 +14,6 @@ src/
   rules/mod.rs           loads the table and compiles each pattern
   scanner/               file collection, the file-type table, rule evaluation
   report/                terminal, JSON, SARIF, Markdown, score and grade
-  version_rule/          the fleet's versioning rule (--version-rule), for the gate
 release/gate.sh          the version gate, run by the release after its build
 release/version-check/   the gate's steps as scripts
 ```
@@ -33,15 +32,16 @@ surface is the one the binary actually has.
 
 The version gate runs in the release, not per push: `.wisent-release.json`
 builds `codespy` once and then runs `release/gate.sh`, which reads that built
-binary's `--surface` and asks the same binary's port of the fleet's versioning
-rule (`codespy --version-rule decide|order|conformance`, `src/version_rule/`,
-AutoVersion SPEC v0.1.0, the way brama, jeden and oko carry theirs; nothing is
-installed). `prove-rule.sh` first requires the port to reproduce every case of
-the SPEC's pinned FIXTURES.md and to answer `internal` for the committed
-surface against itself and `breaking` with one name removed; `compare.sh` then
-checks the declared version against the change. The steps live in
-`release/version-check/` (`prove-rule.sh`, `compare.sh`, `verify-baseline.sh`,
-`verify-provenance.sh`, `baseline.sh`), with scratch in `target/version-gate`.
+binary's `--surface` and asks Stado's one port of the fleet's versioning rule
+(`stado release version-gate decide|conformance|semver-at-least`, AutoVersion
+SPEC v0.1.0); codespy carries no copy of the rule. `prove-rule.sh` first
+requires that port to reproduce every case of the SPEC's pinned FIXTURES.md
+and to answer `internal` for the committed surface against itself and
+`breaking` with one name removed; `compare.sh` then checks the declared
+version against the change, and `newer.sh` answers every ordering question.
+The steps live in `release/version-check/` (`prove-rule.sh`, `compare.sh`,
+`newer.sh`, `verify-baseline.sh`, `verify-provenance.sh`, `baseline.sh`), with
+scratch in `target/version-gate`.
 Where the baseline's provenance is checked depends on where the gate runs. In a
 checkout, `verify-baseline.sh` reads tags and history itself. A release worker
 runs the gate in an unpacked archive without `.git`; there

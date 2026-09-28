@@ -10,7 +10,6 @@ set -euo pipefail
 # serves may be newer than the baseline (a stale baseline measures against a
 # superseded artifact). A head: baseline is refused while any full-version tag
 # exists, because the tag is what callers of the Action pin.
-: "${CODESPY_BIN:?the gate sets the built binary}"
 record=".wisent-provenance/baseline.json"
 if [ ! -f "$record" ]; then
   echo "::error::this archive carries no $record, so nobody verified where" \
@@ -60,8 +59,12 @@ newest=""
 for tag in $(jq -r '.origin_tags[]' "$record"); do
   version="${tag#v}"
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-  if [ -z "$newest" ] || [ "$("$CODESPY_BIN" --version-rule order --older "$newest" \
-       --newer "$version" | jq -r .is_newer)" = true ]; then
+  if [ -z "$newest" ]; then
+    newest="$version"
+    continue
+  fi
+  later="$(bash release/version-check/newer.sh "$newest" "$version")"
+  if [ "$later" = true ]; then
     newest="$version"
   fi
 done
@@ -71,8 +74,8 @@ if [ -n "$newest" ]; then
       "head is the last resort only. Run release/version-check/baseline.sh." >&2
     exit 1
   fi
-  if [ "$("$CODESPY_BIN" --version-rule order --older "$released" --newer "$newest" \
-       | jq -r .is_newer)" = true ]; then
+  superseded="$(bash release/version-check/newer.sh "$released" "$newest")"
+  if [ "$superseded" = true ]; then
     echo "::error::origin serves v$newest, newer than the baseline $released." \
       "Run release/version-check/baseline.sh." >&2
     exit 1

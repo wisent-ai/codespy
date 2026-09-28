@@ -83,8 +83,13 @@ for candidate in $(git tag -l); do
   if [ -z "$there" ]; then
     continue
   fi
-  if [ -z "$newest_version" ] || [ "$("$CODESPY_BIN" --version-rule order \
-       --older "$newest_version" --newer "$there" | jq -r .is_newer)" = "true" ]; then
+  if [ -z "$newest_version" ]; then
+    newest_tag="$candidate"
+    newest_version="$there"
+    continue
+  fi
+  later="$(bash release/version-check/newer.sh "$newest_version" "$there")"
+  if [ "$later" = true ]; then
     newest_tag="$candidate"
     newest_version="$there"
   fi
@@ -118,9 +123,11 @@ case "$marker" in
     ;;
 esac
 
-if [ -n "$newest_version" ] && [ "$newest_version" != "$released" ] \
-   && [ "$("$CODESPY_BIN" --version-rule order --older "$released" \
-          --newer "$newest_version" | jq -r .is_newer)" = "true" ]; then
+superseded=false
+if [ -n "$newest_version" ]; then
+  superseded="$(bash release/version-check/newer.sh "$released" "$newest_version")"
+fi
+if [ "$superseded" = true ]; then
   echo "::error::git tag $newest_tag carries $newest_version, which is newer" \
     "than the baseline $released. Every comparison is being measured against a" \
     "superseded artifact. Run release/version-check/baseline.sh."

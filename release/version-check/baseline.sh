@@ -75,8 +75,9 @@ full_version_tag() {
 }
 
 newer() {
-  [ "$("${CODESPY_BIN:-target/release/codespy}" --version-rule order --older "$1" \
-    --newer "$2" | jq -r .is_newer)" = true ]
+  local answer
+  answer="$(bash release/version-check/newer.sh "$1" "$2")"
+  [ "$answer" = true ]
 }
 
 best_tag=""

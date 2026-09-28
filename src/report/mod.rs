@@ -1,41 +1,47 @@
-//! Report rendering. JSON and SARIF are the reports other tools read.
+//! Report rendering for the terminal, JSON, SARIF, and Markdown output
+//! formats.
 
-use std::fmt::Write;
+mod markdown;
+mod scoring;
+mod structured;
+mod terminal;
 
-use serde_json::Value;
+use std::collections::BTreeMap;
 
-use crate::model::ScanResult;
+use crate::model::{Finding, ScanResult, Severity};
 
-/// The first code point JSON writes as an escape rather than as itself.
-const FIRST_NON_ASCII: u32 = 0x80;
+pub use markdown::format_markdown;
+pub use scoring::{compute_score, score_to_grade, TOP_SCORE};
+pub use structured::{format_json, format_sarif};
+pub use terminal::format_terminal;
 
-/// Format scan results as JSON.
-pub fn format_json(result: &ScanResult) -> String {
-    pretty_ascii(&result.to_json())
+/// Digits per group in a number written with thousands separators.
+const DIGITS_PER_GROUP: usize = 3;
+
+/// The severities a summary lists, most severe first.
+fn summary_order() -> impl Iterator<Item = Severity> {
+    Severity::ALL.into_iter().rev()
 }
 
-/// Format scan results as SARIF 2.1.0.
-pub fn format_sarif(result: &ScanResult) -> String {
-    pretty_ascii(&result.to_sarif())
-}
-
-/// Two-space indented JSON with every character outside ASCII escaped as
-/// `\uXXXX`, the byte form every published report has had, so a report
-/// consumer that compares bytes sees the same file.
-fn pretty_ascii(value: &Value) -> String {
-    let pretty = serde_json::to_string_pretty(value).expect("a JSON value always serializes");
-    // Outside ASCII a character can only occur inside a string literal, where
-    // its escape means the same text.
-    let mut escaped = String::with_capacity(pretty.len());
-    let mut units = [0u16; 2];
-    for character in pretty.chars() {
-        if (character as u32) < FIRST_NON_ASCII {
-            escaped.push(character);
-            continue;
+/// `value` with a comma between every three digits, as `{:,}` writes it.
+fn thousands(value: usize) -> String {
+    let digits = value.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / DIGITS_PER_GROUP);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % DIGITS_PER_GROUP == 0 {
+            grouped.push(',');
         }
-        for unit in character.encode_utf16(&mut units) {
-            write!(escaped, "\\u{unit:04x}").expect("writing to a String cannot fail");
-        }
+        grouped.push(digit);
     }
-    escaped
+    grouped
+}
+
+/// The findings grouped by file, files in path order, each file's findings in
+/// report order.
+fn by_file(result: &ScanResult) -> BTreeMap<&str, Vec<&Finding>> {
+    let mut files: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
+    for finding in &result.findings {
+        files.entry(finding.file_path.as_str()).or_default().push(finding);
+    }
+    files
 }

@@ -9,7 +9,12 @@ repository = "https://github.com/wisent-ai/codespy"
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "codespy"
+path = "src/main.rs"
+
 [dependencies]
+clap = { version = "4", features = ["derive"] }
 fancy-regex = "0.14"
 indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

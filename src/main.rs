@@ -13,6 +13,9 @@ use codespy::model::Severity;
 use codespy::report::{format_json, format_markdown, format_sarif, format_terminal};
 use codespy::scanner::run_scan;
 
+/// The exit status of a scan that could not read everything it selected.
+const INCOMPLETE_SCAN_EXIT: u8 = 2;
+
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Format {
     Terminal,
@@ -100,8 +103,10 @@ fn main() -> ExitCode {
     let result = match run_scan(&arguments.path, min_severity) {
         Ok(result) => result,
         Err(error) => {
-            eprintln!("Error: {error}");
-            return ExitCode::FAILURE;
+            // Not 1: that status means "findings at high or above", and a scan
+            // that could not read part of the tree has not found that it is clean.
+            eprintln!("Error: the scan is incomplete: {error}");
+            return ExitCode::from(INCOMPLETE_SCAN_EXIT);
         }
     };
 

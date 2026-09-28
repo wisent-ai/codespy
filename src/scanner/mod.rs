@@ -19,8 +19,10 @@ const MILLISECONDS_PER_SECOND: f64 = 1000.0;
 /// Why a scan could not finish.
 #[derive(Debug)]
 pub enum ScanError {
-    /// The path could not be walked.
-    Walk(io::Error),
+    /// A directory or file of the scan path could not be opened or measured.
+    Walk { path: PathBuf, error: io::Error },
+    /// A file the scan selected could not be read, so it was not scanned.
+    Read { file: PathBuf, error: io::Error },
     /// A rule's pattern gave up on a file (the matcher's backtracking bound).
     Pattern { rule: String, file: PathBuf, detail: String },
 }
@@ -28,7 +30,8 @@ pub enum ScanError {
 impl std::fmt::Display for ScanError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScanError::Walk(error) => write!(formatter, "cannot walk the scan path: {error}"),
+            ScanError::Walk { path, error } => write!(formatter, "cannot walk {}: {error}", path.display()),
+            ScanError::Read { file, error } => write!(formatter, "cannot read {}: {error}", file.display()),
             ScanError::Pattern { rule, file, detail } => {
                 write!(formatter, "rule {rule} could not be evaluated on {}: {detail}", file.display())
             }
@@ -40,14 +43,15 @@ impl std::error::Error for ScanError {}
 
 /// Scan one file: every finding of every rule that applies to `language` at
 /// or above `min_severity`, in rule order, and the file's line count. A file
-/// that cannot be read yields nothing, as it always has.
+/// that cannot be read is an error: reporting it as clean would pass a gate
+/// over code nobody looked at.
 pub fn scan_file(
     file_path: &Path,
     language: &str,
     rules: &[Rule],
     min_severity: Severity,
 ) -> Result<(Vec<Finding>, usize), ScanError> {
-    let Ok(bytes) = fs::read(file_path) else { return Ok((Vec::new(), 0)) };
+    let bytes = fs::read(file_path).map_err(|error| ScanError::Read { file: file_path.to_path_buf(), error })?;
     let content = String::from_utf8_lossy(&bytes);
     let lines: Vec<&str> = content.split('\n').collect();
     let mut findings = Vec::new();
@@ -95,9 +99,10 @@ fn relative(file: &Path, root: &Path) -> String {
 /// rule order.
 pub fn run_scan(path: &Path, min_severity: Severity) -> Result<ScanResult, ScanError> {
     let started = Instant::now();
-    let root = std::path::absolute(path).map_err(ScanError::Walk)?;
+    let root = std::path::absolute(path)
+        .map_err(|error| ScanError::Walk { path: path.to_path_buf(), error })?;
     let mut result = ScanResult { path: root.to_string_lossy().into_owned(), ..ScanResult::default() };
-    for (file, language) in collect_files(&root).map_err(ScanError::Walk)? {
+    for (file, language) in collect_files(&root)? {
         let (mut findings, line_count) = scan_file(&file, language, rules(), min_severity)?;
         let shown = relative(&file, &root);
         for finding in &mut findings {

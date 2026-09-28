@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+
+use super::ScanError;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -62,8 +64,10 @@ fn skipped_directory(name: &str) -> bool {
 /// Every file under `root` a scan reads, with its language. A single file is
 /// read when its language is known; a directory is walked without following
 /// directory links, skipping hidden and build directories and files larger
-/// than [`MAX_FILE_SIZE`].
-pub fn collect_files(root: &Path) -> io::Result<Vec<(PathBuf, &'static str)>> {
+/// than [`MAX_FILE_SIZE`]. A directory or file the walk cannot open or
+/// measure is an error naming it, never a silent gap in the scan.
+pub fn collect_files(root: &Path) -> Result<Vec<(PathBuf, &'static str)>, ScanError> {
+    let walk = |path: &Path, error: io::Error| ScanError::Walk { path: path.to_path_buf(), error };
     let mut files = Vec::new();
     if root.is_file() {
         if let Some(language) = detect_language(root) {
@@ -73,10 +77,10 @@ pub fn collect_files(root: &Path) -> io::Result<Vec<(PathBuf, &'static str)>> {
     }
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(&directory)? {
-            let entry = entry?;
+        for entry in fs::read_dir(&directory).map_err(|error| walk(&directory, error))? {
+            let entry = entry.map_err(|error| walk(&directory, error))?;
             let path = entry.path();
-            let kind = entry.file_type()?;
+            let kind = entry.file_type().map_err(|error| walk(&path, error))?;
             if kind.is_dir() {
                 let name = entry.file_name();
                 if !skipped_directory(&name.to_string_lossy()) {
@@ -85,9 +89,7 @@ pub fn collect_files(root: &Path) -> io::Result<Vec<(PathBuf, &'static str)>> {
                 continue;
             }
             let Some(language) = detect_language(&path) else { continue };
-            // A file that vanished or cannot be measured is not read, as a
-            // file the walk could not open is not.
-            let Ok(metadata) = fs::metadata(&path) else { continue };
+            let metadata = fs::metadata(&path).map_err(|error| walk(&path, error))?;
             if metadata.len() <= MAX_FILE_SIZE {
                 files.push((path, language));
             }

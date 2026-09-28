@@ -62,8 +62,9 @@ impl Finding {
         Value::Object(map)
     }
 
-    /// The finding as one SARIF 2.1.0 result. A suggestion becomes the
-    /// result's fix description.
+    /// The finding as one SARIF 2.1.0 result. A suggestion is advice, not an
+    /// edit: SARIF's `fix` requires `artifactChanges`, so the suggestion is
+    /// carried as the result's `suggestion` property instead.
     pub fn to_sarif_result(&self) -> Value {
         let mut result = Map::new();
         result.insert("ruleId".into(), json!(self.rule_id));
@@ -79,10 +80,7 @@ impl Finding {
             }]),
         );
         if !self.suggestion.is_empty() {
-            result.insert(
-                "fixes".into(),
-                json!([{ "description": { "text": self.suggestion } }]),
-            );
+            result.insert("properties".into(), json!({ "suggestion": self.suggestion }));
         }
         Value::Object(result)
     }

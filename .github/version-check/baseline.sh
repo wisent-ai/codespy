@@ -48,7 +48,8 @@ if [ "$mode" = --declared ]; then
 fi
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
-work="$RUNNER_TEMP/baseline"
+# Scratch lives in this checkout's ignored build directory.
+work="$root/target/version-check"
 rm -rf "$work"
 mkdir -p "$work"
 
@@ -96,11 +97,19 @@ for tag in $(git tag -l | sort); do
   fi
 done
 
-# The surface of a tree unpacked at $1, marked $2.
+# The surface of the artifact at git ref $1, marked $2. Nothing is unpacked:
+# a Rust-era artifact is read by running this checkout's own `codespy
+# --surface`, which is only that artifact when the checkout's tree is the
+# ref's tree; a pre-port artifact is read from what the baseline records.
 surface_of() {
-  local tree="$1" marker="$2"
-  if [ -f "$tree/Cargo.toml" ]; then
-    cargo run --quiet --manifest-path "$tree/Cargo.toml" -- --surface "$tree/action.yml" | jq .surface
+  local ref="$1" marker="$2"
+  if git cat-file -e "$ref:Cargo.toml" 2>/dev/null; then
+    if ! git diff --quiet "$ref" -- ; then
+      echo "::error::$marker is not the tree checked out here; run this at $ref," \
+        "whose own program states its surface." >&2
+      return 1
+    fi
+    cargo run --quiet -- --surface action.yml | jq .surface
   elif [ "$(jq -r '.source | split(" ") | first' released-surface.json)" = "$marker" ]; then
     jq .surface released-surface.json
   else
@@ -113,15 +122,23 @@ surface_of() {
 if [ -n "$best_tag" ]; then
   marker="git-archive:$best_tag"
   version="$best_version"
-  mkdir -p "$work/tree"
-  git archive "$best_tag" | tar -x -C "$work/tree"
-  surface="$(surface_of "$work/tree" "$marker")"
-  prose="reproduced with \`git archive $best_tag\` and read by its own codespy --surface. PyPI serves no project named codespy, and codespy does not ship through Stado. It is published as a GitHub Action, and every README example consumes wisent-ai/codespy@$best_tag, so this tag is the artifact callers actually get, and it declares $version."
+  if [ "$mode" = --stdout ] || [ "$mode" = --dry-run ]; then
+    # The tier check reads the marker only; the surface is never recomputed
+    # at check time, so the committed one stands in.
+    surface="$(jq .surface released-surface.json)"
+  else
+    surface="$(surface_of "$best_tag" "$marker")"
+  fi
+  prose="the artifact at git tag $best_tag, read by its own codespy --surface. PyPI serves no project named codespy, and codespy does not ship through Stado. It is published as a GitHub Action, and every README example consumes wisent-ai/codespy@$best_tag, so this tag is the artifact callers actually get, and it declares $version."
 else
   sha="$(git rev-parse HEAD)"
   marker="head:$sha"
   version="$(declared_at HEAD)"
-  surface="$(surface_of "$root" "$marker")"
+  if [ "$mode" = --stdout ] || [ "$mode" = --dry-run ]; then
+    surface="$(jq .surface released-surface.json)"
+  else
+    surface="$(surface_of HEAD "$marker")"
+  fi
   prose="last resort. PyPI serves no project named codespy, and no git tag carries a version, so nothing is published and there is no higher tier to reach for."
 fi
 

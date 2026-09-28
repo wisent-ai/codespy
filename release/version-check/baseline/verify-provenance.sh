@@ -63,7 +63,7 @@ for tag in $(jq -r '.origin_tags[]' "$record"); do
     newest="$version"
     continue
   fi
-  later="$(bash release/version-check/newer.sh "$newest" "$version")"
+  later="$(bash release/version-check/rule/newer.sh "$newest" "$version")"
   if [ "$later" = true ]; then
     newest="$version"
   fi
@@ -71,13 +71,13 @@ done
 if [ -n "$newest" ]; then
   if [ "${marker%%:*}" = head ]; then
     echo "::error::baseline claims $marker, but origin serves tag v$newest;" \
-      "head is the last resort only. Run release/version-check/baseline.sh." >&2
+      "head is the last resort only. Run release/version-check/baseline/baseline.sh." >&2
     exit 1
   fi
-  superseded="$(bash release/version-check/newer.sh "$released" "$newest")"
+  superseded="$(bash release/version-check/rule/newer.sh "$released" "$newest")"
   if [ "$superseded" = true ]; then
     echo "::error::origin serves v$newest, newer than the baseline $released." \
-      "Run release/version-check/baseline.sh." >&2
+      "Run release/version-check/baseline/baseline.sh." >&2
     exit 1
   fi
 fi

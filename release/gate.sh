@@ -29,9 +29,9 @@ export RUNNER_TEMP="$root/target/version-gate"
 rm -rf "$RUNNER_TEMP"
 mkdir -p "$RUNNER_TEMP"
 
-bash release/version-check/prove-rule.sh
+bash release/version-check/rule/prove-rule.sh
 "$CODESPY_BIN" --surface action.yml > "$RUNNER_TEMP/candidate.json"
-bash release/version-check/compare.sh
+bash release/version-check/rule/compare.sh
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   # Tags and full history, which every later read of a ref depends on.
@@ -40,7 +40,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   else
     git fetch --force --tags
   fi
-  bash release/version-check/verify-baseline.sh
+  bash release/version-check/baseline/verify-baseline.sh
 else
-  bash release/version-check/verify-provenance.sh
+  bash release/version-check/baseline/verify-provenance.sh
 fi

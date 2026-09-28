@@ -12,7 +12,7 @@ set -euo pipefail
 # The two files are coupled by a provenance marker, not by prose a reword
 # could silently break: the marker is the first whitespace-delimited token of
 # "source", everything after the first space is prose for humans, and
-# release/version-check/baseline.sh is the only thing that writes it. Tiers, best first:
+# release/version-check/baseline/baseline.sh is the only thing that writes it. Tiers, best first:
 # pypi-sdist, pypi-wheel, stado, git-archive, head.
 released="$(jq -r .version released-surface.json)"
 marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
@@ -22,7 +22,7 @@ case "$marker" in
   pypi-*) claims_registry=yes ;;
   stado:*|git-archive:*|head:*) claims_registry=no ;;
   *)
-    echo "::error::unknown baseline marker: $marker. Run release/version-check/baseline.sh."
+    echo "::error::unknown baseline marker: $marker. Run release/version-check/baseline/baseline.sh."
     false
     ;;
 esac
@@ -50,7 +50,7 @@ esac
 if [ "$claims_registry" = yes ]; then
   if ! curl -sSf "https://pypi.org/pypi/codespy/$released/json" >/dev/null; then
     echo "::error::baseline claims $marker, but PyPI does not serve codespy" \
-      "$released. Run release/version-check/baseline.sh."
+      "$released. Run release/version-check/baseline/baseline.sh."
     false
   fi
   echo "PyPI serves codespy $released, as $marker claims."
@@ -58,7 +58,7 @@ else
   answer="$(curl -s "https://pypi.org/pypi/codespy/json" || true)"
   if printf '%s' "$answer" | jq -e '.info.name' >/dev/null; then
     echo "::error::baseline claims $marker, which asserts nothing is published," \
-      "but PyPI names codespy. Run release/version-check/baseline.sh."
+      "but PyPI names codespy. Run release/version-check/baseline/baseline.sh."
     false
   elif ! printf '%s' "$answer" \
        | jq -e '(.message // "") | ascii_downcase | contains("not found")' \
@@ -79,7 +79,7 @@ fi
 newest_tag=""
 newest_version=""
 for candidate in $(git tag -l); do
-  there="$(bash release/version-check/baseline.sh --declared "$candidate")" || continue
+  there="$(bash release/version-check/baseline/baseline.sh --declared "$candidate")" || continue
   if [ -z "$there" ]; then
     continue
   fi
@@ -88,7 +88,7 @@ for candidate in $(git tag -l); do
     newest_version="$there"
     continue
   fi
-  later="$(bash release/version-check/newer.sh "$newest_version" "$there")"
+  later="$(bash release/version-check/rule/newer.sh "$newest_version" "$there")"
   if [ "$later" = true ]; then
     newest_tag="$candidate"
     newest_version="$there"
@@ -100,14 +100,14 @@ case "$marker" in
     tag="${marker#git-archive:}"
     if ! git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
       echo "::error::baseline claims git tag $tag, which this repository does" \
-        "not have. Run release/version-check/baseline.sh."
+        "not have. Run release/version-check/baseline/baseline.sh."
       false
     fi
-    tagged="$(bash release/version-check/baseline.sh --declared "$tag")"
+    tagged="$(bash release/version-check/baseline/baseline.sh --declared "$tag")"
     if [ "$tagged" != "$released" ]; then
       echo "::error::git tag $tag declares $tagged, not $released, so the" \
         "baseline is measured against an artifact that is not that version." \
-        "Run release/version-check/baseline.sh."
+        "Run release/version-check/baseline/baseline.sh."
       false
     fi
     echo "Baseline $released is the artifact at git tag $tag."
@@ -116,7 +116,7 @@ case "$marker" in
     if [ -n "$newest_tag" ]; then
       echo "::error::baseline claims $marker, but git tag $newest_tag carries" \
         "$newest_version and is the artifact callers get. head is the last" \
-        "resort only. Run release/version-check/baseline.sh."
+        "resort only. Run release/version-check/baseline/baseline.sh."
       false
     fi
     echo "Baseline $released is HEAD; no tag and no release exist, as claimed."
@@ -125,12 +125,12 @@ esac
 
 superseded=false
 if [ -n "$newest_version" ]; then
-  superseded="$(bash release/version-check/newer.sh "$released" "$newest_version")"
+  superseded="$(bash release/version-check/rule/newer.sh "$released" "$newest_version")"
 fi
 if [ "$superseded" = true ]; then
   echo "::error::git tag $newest_tag carries $newest_version, which is newer" \
     "than the baseline $released. Every comparison is being measured against a" \
-    "superseded artifact. Run release/version-check/baseline.sh."
+    "superseded artifact. Run release/version-check/baseline/baseline.sh."
   false
 fi
 
@@ -161,7 +161,7 @@ fi
 # before comparing them. (The line continuation hid this from the fleet audit,
 # whose pattern wants the pipe and the generator on one line; the defect was
 # there all the same.)
-if ! bash release/version-check/baseline.sh --stdout > "$RUNNER_TEMP/best.json"; then
+if ! bash release/version-check/baseline/baseline.sh --stdout > "$RUNNER_TEMP/best.json"; then
   echo "::error::baseline.sh could not establish the best reachable" \
     "artifact, so whether this baseline is stale is unproven. That is not the" \
     "same as up to date."
@@ -179,7 +179,7 @@ for token in "$marker" "$best"; do
     ''|null)
       echo "::error::a marker read '${token:-<empty>}' ('$marker' committed," \
         "'$best' regenerated), so this comparison would be vacuous. The" \
-        "baseline's .source is missing or empty; run release/version-check/baseline.sh."
+        "baseline's .source is missing or empty; run release/version-check/baseline/baseline.sh."
       false
       ;;
   esac
@@ -194,7 +194,7 @@ fi
 if [ "$want" != "$have" ]; then
   echo "::error::the baseline names '$have' but '$want' is reachable now, so a" \
     "better artifact exists than the one every comparison is measured against." \
-    "Run release/version-check/baseline.sh."
+    "Run release/version-check/baseline/baseline.sh."
   false
 fi
 echo "Baseline artifact '$have' is still the best reachable."

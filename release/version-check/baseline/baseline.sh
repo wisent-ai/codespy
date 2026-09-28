@@ -25,10 +25,10 @@ set -euo pipefail
 # when its marker names exactly that artifact.
 #
 # Usage:
-#   bash release/version-check/baseline.sh            # rewrite released-surface.json
-#   bash release/version-check/baseline.sh --stdout   # print it, touch nothing
-#   bash release/version-check/baseline.sh --dry-run  # print the marker only
-#   bash release/version-check/baseline.sh --declared <ref>  # the version <ref> declares
+#   bash release/version-check/baseline/baseline.sh            # rewrite released-surface.json
+#   bash release/version-check/baseline/baseline.sh --stdout   # print it, touch nothing
+#   bash release/version-check/baseline/baseline.sh --dry-run  # print the marker only
+#   bash release/version-check/baseline/baseline.sh --declared <ref>  # the version <ref> declares
 
 # The version a tree declares: Cargo.toml's package version, or the
 # __version__ of a pre-port codespy.py.
@@ -92,7 +92,7 @@ for tag in $(git tag -l | sort); do
   fi
   # A standalone assignment, so a version Stado refuses stops this script
   # instead of reading as "not newer" inside a condition.
-  later="$(bash release/version-check/newer.sh "$best_version" "$version")"
+  later="$(bash release/version-check/rule/newer.sh "$best_version" "$version")"
   if [ "$later" = true ]; then
     best_tag="$tag"; best_version="$version"
   elif [ "$version" = "$best_version" ] && full_version_tag "$tag" && ! full_version_tag "$best_tag"; then

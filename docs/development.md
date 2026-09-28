@@ -15,7 +15,8 @@ src/
   scanner/               file collection, the file-type table, rule evaluation
   report/                terminal, JSON, SARIF, Markdown, score and grade
 release/gate.sh          the version gate, run by the release after its build
-release/version-check/   the gate's steps as scripts
+release/version-check/rule/      asking the rule: prove-rule.sh, compare.sh, newer.sh
+release/version-check/baseline/  the baseline and its provenance checks
 ```
 
 Rule order is part of the contract, because findings of equal severity, file and
@@ -39,9 +40,10 @@ requires that port to reproduce every case of the SPEC's pinned FIXTURES.md
 and to answer `internal` for the committed surface against itself and
 `breaking` with one name removed; `compare.sh` then checks the declared
 version against the change, and `newer.sh` answers every ordering question.
-The steps live in `release/version-check/` (`prove-rule.sh`, `compare.sh`,
-`newer.sh`, `verify-baseline.sh`, `verify-provenance.sh`, `baseline.sh`), with
-scratch in `target/version-gate`.
+The steps live in `release/version-check/rule/` (`prove-rule.sh`,
+`compare.sh`, `newer.sh`) and `release/version-check/baseline/`
+(`verify-baseline.sh`, `verify-provenance.sh`, `baseline.sh`), with scratch in
+`target/version-gate`.
 Where the baseline's provenance is checked depends on where the gate runs. In a
 checkout, `verify-baseline.sh` reads tags and history itself. A release worker
 runs the gate in an unpacked archive without `.git`; there

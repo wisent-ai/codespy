@@ -3,13 +3,18 @@ set -euo pipefail
 # The baseline check for a release worker's archive, which has no .git.
 # Stado's build submit reads the committed released-surface.json, requires a
 # git-archive:<tag> baseline's tag to be served by origin at the commit the
-# checkout resolves it to, and archives the result together with every tag
-# origin serves at .wisent-provenance/baseline.json. This step believes nothing
-# else: the record must exist, must describe this source revision, must name
-# the same marker the committed baseline carries, and no full-version tag origin
-# serves may be newer than the baseline (a stale baseline measures against a
-# superseded artifact). A head: baseline is refused while any full-version tag
-# exists, because the tag is what callers of the Action pin.
+# checkout resolves it to, and archives the result at
+# .wisent-provenance/baseline.json, together with origin_tag_versions: every
+# tag origin serves, its commit, and the version that commit's Cargo.toml
+# declares (null when that tree has none). This step believes nothing else:
+# the record must exist, must describe this source revision and the marker the
+# committed baseline carries, the marker tag's declared version must be the
+# released one, and no tag origin serves may declare a newer version (a stale
+# baseline measures against a superseded artifact). Versions come from the
+# tagged trees, never from tag spelling: a floating tag such as v1 names no
+# version, and a moved one would name another tree's. A head: baseline is
+# refused while any tag declares a version, because a tag is what callers of
+# the Action pin.
 record=".wisent-provenance/baseline.json"
 if [ ! -f "$record" ]; then
   echo "::error::this archive carries no $record, so nobody verified where" \
@@ -40,12 +45,17 @@ case "$marker" in
       echo "::error::Stado's record does not name the baseline tag $tag as verified." >&2
       exit 1
     fi
-    # A full-version tag must name the released version; a floating major
-    # alias (v1, what the README pins) names none, and Stado has already
-    # verified that origin serves it at the recorded commit.
-    if [[ "${tag#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "${tag#v}" != "$released" ]; then
-      echo "::error::baseline tag $tag does not name the released version $released." >&2
+    declared="$(jq -r --arg tag "$tag" '.origin_tag_versions[$tag].version // empty' "$record")"
+    if [ -n "$declared" ] && [ "$declared" != "$released" ]; then
+      echo "::error::baseline tag $tag's tree declares $declared, not the released" \
+        "version $released. Run release/version-check/baseline/baseline.sh." >&2
       exit 1
+    fi
+    if [ -z "$declared" ]; then
+      # Pre-port tags (codespy.py) carry no Cargo.toml, so Stado could not
+      # read their version; say so rather than let the tag name stand in.
+      echo "note: $tag's tree declares no Cargo.toml version; released-surface.json" \
+        "records $released for it, read from codespy.py when the baseline was made."
     fi
     ;;
   head:*) ;;
@@ -56,9 +66,7 @@ case "$marker" in
 esac
 
 newest=""
-for tag in $(jq -r '.origin_tags[]' "$record"); do
-  version="${tag#v}"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+for version in $(jq -r '.origin_tag_versions // {} | .[] | .version // empty' "$record"); do
   if [ -z "$newest" ]; then
     newest="$version"
     continue
@@ -70,14 +78,14 @@ for tag in $(jq -r '.origin_tags[]' "$record"); do
 done
 if [ -n "$newest" ]; then
   if [ "${marker%%:*}" = head ]; then
-    echo "::error::baseline claims $marker, but origin serves tag v$newest;" \
+    echo "::error::baseline claims $marker, but a tag origin serves declares $newest;" \
       "head is the last resort only. Run release/version-check/baseline/baseline.sh." >&2
     exit 1
   fi
   superseded="$(bash release/version-check/rule/newer.sh "$released" "$newest")"
   if [ "$superseded" = true ]; then
-    echo "::error::origin serves v$newest, newer than the baseline $released." \
-      "Run release/version-check/baseline/baseline.sh." >&2
+    echo "::error::a tag origin serves declares $newest, newer than the baseline" \
+      "$released. Run release/version-check/baseline/baseline.sh." >&2
     exit 1
   fi
 fi

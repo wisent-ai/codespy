@@ -1,0 +1,33 @@
+{
+  "extensions": {
+    "python": [".py", ".pyw"],
+    "javascript": [".js", ".jsx", ".mjs", ".cjs"],
+    "typescript": [".ts", ".tsx"],
+    "go": [".go"],
+    "rust": [".rs"],
+    "java": [".java"],
+    "ruby": [".rb"],
+    "php": [".php"],
+    "c": [".c", ".h"],
+    "cpp": [".cpp", ".hpp", ".cc", ".cxx"],
+    "csharp": [".cs"],
+    "shell": [".sh", ".bash", ".zsh"],
+    "yaml": [".yml", ".yaml"],
+    "dockerfile": ["Dockerfile"],
+    "terraform": [".tf"],
+    "sql": [".sql"]
+  },
+  "named_files": {
+    "Dockerfile": "dockerfile",
+    "Makefile": "shell",
+    "makefile": "shell",
+    "GNUmakefile": "shell"
+  },
+  "dockerfile_prefix": "Dockerfile.",
+  "skip_directories": [
+    ".git", ".svn", ".hg", "node_modules", "__pycache__", ".tox",
+    ".pytest_cache", ".mypy_cache", "venv", ".venv", "env", ".env",
+    "vendor", "dist", "build", ".next", ".nuxt", "target",
+    "coverage", ".coverage", "htmlcov", ".eggs", "*.egg-info"
+  ]
+}

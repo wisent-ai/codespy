@@ -1,7 +1,10 @@
 //! What one scan found and measured, and the JSON and SARIF documents it is
 //! written as.
 
+use std::collections::BTreeMap;
+
 use indexmap::IndexMap;
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{Finding, Severity};
@@ -9,6 +12,13 @@ use crate::identity::{INFORMATION_URI, NAME, SARIF_SCHEMA, SARIF_VERSION, VERSIO
 
 /// Decimal places the JSON report keeps on the scan duration.
 const DURATION_DIGITS: i32 = 2;
+
+/// How much of one language a scan read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct LanguageStats {
+    pub files: usize,
+    pub lines: usize,
+}
 
 /// Everything one scan of one path produced.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -19,8 +29,8 @@ pub struct ScanResult {
     pub lines_scanned: usize,
     pub scan_duration_ms: f64,
     pub findings: Vec<Finding>,
-    /// Files scanned per language, in the order languages were first met.
-    pub language_stats: IndexMap<String, usize>,
+    /// Files and lines read per language, by language name.
+    pub language_stats: BTreeMap<String, LanguageStats>,
 }
 
 /// `value` rounded to `digits` decimals, halves to the even neighbour, as the

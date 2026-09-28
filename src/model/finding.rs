@@ -5,7 +5,8 @@ use serde_json::{json, Map, Value};
 use super::{Category, Severity};
 
 /// How sure the rule is that the line is a real problem.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Confidence {
     High,
     Medium,

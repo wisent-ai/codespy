@@ -4,12 +4,13 @@
 mod finding;
 mod scan_result;
 
-pub use finding::Finding;
-pub use scan_result::ScanResult;
+pub use finding::{Confidence, Finding};
+pub use scan_result::{LanguageStats, ScanResult};
 
 /// How much a finding matters, least first: the declaration order is the
 /// order a threshold compares against.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
     Low,
@@ -51,7 +52,8 @@ impl Severity {
 }
 
 /// What kind of problem a finding is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Category {
     Security,
     Secret,

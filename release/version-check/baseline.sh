@@ -74,12 +74,6 @@ full_version_tag() {
   [[ "${1#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
-newer() {
-  local answer
-  answer="$(bash release/version-check/newer.sh "$1" "$2")"
-  [ "$answer" = true ]
-}
-
 best_tag=""
 best_version=""
 for tag in $(git tag -l | sort); do
@@ -92,7 +86,14 @@ for tag in $(git tag -l | sort); do
     echo "skipping tag $tag: it declares $version, so the tag is mis-signed" >&2
     continue
   fi
-  if [ -z "$best_version" ] || newer "$best_version" "$version"; then
+  if [ -z "$best_version" ]; then
+    best_tag="$tag"; best_version="$version"
+    continue
+  fi
+  # A standalone assignment, so a version Stado refuses stops this script
+  # instead of reading as "not newer" inside a condition.
+  later="$(bash release/version-check/newer.sh "$best_version" "$version")"
+  if [ "$later" = true ]; then
     best_tag="$tag"; best_version="$version"
   elif [ "$version" = "$best_version" ] && full_version_tag "$tag" && ! full_version_tag "$best_tag"; then
     best_tag="$tag"

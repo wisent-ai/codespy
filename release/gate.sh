@@ -11,17 +11,31 @@ set -euo pipefail
 # (https://github.com/lbartoszcze/AutoVersion); this repository supplies its
 # surface and the version it declares.
 
-root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-  echo "::error::the version gate reads tags and history, and this release runs" \
-    "outside a git work tree, so the gate cannot decide; refusing." >&2
-  exit 1
-}
-cd "$root"
-export CODESPY_BIN="${CODESPY_BIN:-$root/target/release/codespy}"
+# A release worker runs this in an unpacked archive with no .git and names the
+# revision in WISENT_SOURCE_COMMIT. The gate reads tags and history, so there it
+# clones the repository at that revision into the archive's build directory and
+# runs from the clone; the binary is still the one this build made.
+here="$(pwd)"
+export CODESPY_BIN="${CODESPY_BIN:-$here/target/release/codespy}"
 if [ ! -x "$CODESPY_BIN" ]; then
   echo "::error::no built codespy at $CODESPY_BIN; the gate reads the release's own binary." >&2
   exit 1
 fi
+if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  revision="${WISENT_SOURCE_COMMIT:-}"
+  if [ -z "$revision" ]; then
+    echo "::error::the version gate reads tags and history; this release runs outside" \
+      "a git work tree and WISENT_SOURCE_COMMIT names no revision, so the gate" \
+      "cannot decide; refusing." >&2
+    exit 1
+  fi
+  root="$here/target/version-gate-source"
+  rm -rf "$root"
+  repository="$(awk -F'"' '/^repository *=/{print $2; exit}' Cargo.toml)"
+  git clone --quiet "$repository" "$root"
+  git -C "$root" checkout --quiet --detach "$revision"
+fi
+cd "$root"
 # Scratch lives in this checkout's ignored build directory.
 export RUNNER_TEMP="$root/target/version-gate"
 rm -rf "$RUNNER_TEMP"

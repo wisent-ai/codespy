@@ -36,6 +36,11 @@ binary's `--surface`, installs the shared rule, proves the rule can refuse, and
 compares the declared version with the change. Its steps live in
 `release/version-check/` (`install-rule.sh`, `prove-refusal.sh`, `compare.sh`,
 `verify-baseline.sh`, `baseline.sh`), with scratch in `target/version-gate`.
+On a release worker the source is an unpacked archive without `.git`; there
+the gate clones the Cargo.toml `repository` at `WISENT_SOURCE_COMMIT` into
+`target/version-gate-source` and runs from that clone, still against the
+binary the build made. Outside a work tree and without that variable it
+refuses, because it cannot read tags or history.
 `baseline.sh` regenerates `released-surface.json` from the
 best published artifact; releases from before the Rust port (the `codespy.py`
 tags) are read from the surface the baseline already records for them. In every

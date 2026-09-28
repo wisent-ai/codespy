@@ -20,16 +20,6 @@
       "stage": {
         "target/release/codespy": "bin/codespy"
       }
-    },
-    "source": {
-      "runner_platform": "linux-amd64",
-      "quality": [],
-      "build": {
-        "argv": ["stado", "product", "source-bundle"]
-      },
-      "stage": {
-        "release/source-bundle.tar": "release/source-bundle.tar"
-      }
     }
   },
   "promotion": {

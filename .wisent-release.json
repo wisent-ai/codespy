@@ -12,7 +12,7 @@
       "runner_platform": "linux-amd64",
       "quality": [],
       "build": {
-        "argv": ["cargo", "build", "--release"]
+        "argv": ["cargo", "build", "--release", "--locked"]
       },
       "tests": [
         {"name": "version-gate", "argv": ["bash", "release/gate.sh"]}

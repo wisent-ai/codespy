@@ -69,7 +69,7 @@ runs:
       # from the exact ref the workflow pinned.
       shell: bash
       run: |
-        cargo install --quiet --path "${{ github.action_path }}" --root "$RUNNER_TEMP/codespy"
+        cargo install --quiet --locked --path "${{ github.action_path }}" --root "$RUNNER_TEMP/codespy"
         echo "$RUNNER_TEMP/codespy/bin" >> "$GITHUB_PATH"
 
     - name: Run codespy scan

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 released="$(jq -r .version released-surface.json)"
-declared="$(bash release/version-check/baseline.sh --declared HEAD)"
+# The tree being released is the tree this runs in, checkout or archive alike.
+declared="$(awk -F'"' '/^version *=/{print $2; exit}' Cargo.toml)"
 echo "released: $released"
 echo "declared: $declared"
 

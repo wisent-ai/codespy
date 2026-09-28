@@ -41,12 +41,15 @@ the SPEC's pinned FIXTURES.md and to answer `internal` for the committed
 surface against itself and `breaking` with one name removed; `compare.sh` then
 checks the declared version against the change. The steps live in
 `release/version-check/` (`prove-rule.sh`, `compare.sh`, `verify-baseline.sh`,
-`baseline.sh`), with scratch in `target/version-gate`.
-On a release worker the source is an unpacked archive without `.git`; there
-the gate clones the Cargo.toml `repository` at `WISENT_SOURCE_COMMIT` into
-`target/version-gate-source` and runs from that clone, still against the
-binary the build made. Outside a work tree and without that variable it
-refuses, because it cannot read tags or history.
+`verify-provenance.sh`, `baseline.sh`), with scratch in `target/version-gate`.
+Where the baseline's provenance is checked depends on where the gate runs. In a
+checkout, `verify-baseline.sh` reads tags and history itself. A release worker
+runs the gate in an unpacked archive without `.git`; there
+`verify-provenance.sh` reads `.wisent-provenance/baseline.json`, which
+`stado release build submit` writes after checking the baseline tag against
+origin. It refuses when the record is missing, describes another revision
+than `WISENT_SOURCE_COMMIT`, names another marker than `released-surface.json`,
+or lists a full-version tag newer than the baseline. No second checkout is made.
 `baseline.sh` regenerates `released-surface.json` from the
 best published artifact; releases from before the Rust port (the `codespy.py`
 tags) are read from the surface the baseline already records for them. In every

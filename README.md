@@ -145,7 +145,10 @@ codespy [path]
 - The default format is terminal.
 - The default minimum severity is `info`.
 - `--fix` displays rule suggestions; it never changes source.
-- High or critical findings in the filtered result produce exit status `1`.
+- Exit status: `0` no high or critical finding in the filtered result; `1` at
+  least one; `2` the invocation is wrong (a path that does not exist, an
+  unknown severity or flag); `3` the scan could not read everything it
+  selected; `4` the report could not be written to `--output`.
 
 ## Repository layout
 

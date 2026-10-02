@@ -131,14 +131,19 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
         # The scan in the requested format. Exit 1 only means findings at high
-        # or above, which the threshold below decides on; exit 2 is a scan that
-        # could not read everything it selected.
+        # or above, which the threshold below decides on; 3 is a scan that could
+        # not read everything it selected, and 2 or 4 a scan that never produced
+        # its report.
         set +e
         codespy "${args[@]}"
         SCAN_EXIT=$?
         set -e
-        if [ "$SCAN_EXIT" -eq 2 ]; then
+        if [ "$SCAN_EXIT" -eq 3 ]; then
           echo "::error::codespy could not read part of $SCAN_PATH, so the scan is incomplete"
+          exit 1
+        fi
+        if [ "$SCAN_EXIT" -ne 0 ] && [ "$SCAN_EXIT" -ne 1 ]; then
+          echo "::error::codespy exited $SCAN_EXIT without a complete report"
           exit 1
         fi
 

@@ -13,8 +13,14 @@ use codespy::model::Severity;
 use codespy::report::{format_json, format_markdown, format_sarif, format_terminal};
 use codespy::scanner::run_scan;
 
-/// The exit status of a scan that could not read everything it selected.
-const INCOMPLETE_SCAN_EXIT: u8 = 2;
+// The exit statuses, each with one meaning (cli.md rule 10): 0 the scan is
+// clean at high and above, 1 it found something at high or above, and these.
+/// The invocation is wrong: a path that does not exist, an unknown severity.
+const USAGE_EXIT: u8 = 2;
+/// The scan could not read everything it selected, so it cannot say clean.
+const INCOMPLETE_SCAN_EXIT: u8 = 3;
+/// The scan ran but its report could not be written to `--output`.
+const REPORT_UNWRITTEN_EXIT: u8 = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Format {
@@ -30,7 +36,7 @@ enum Format {
     version,
     disable_version_flag = true,
     about = "Fast offline code security scanner & quality analyzer.",
-    after_help = "Built by Adam (ADAM) — https://github.com/wisent-ai/codespy"
+    after_help = "Exit status: 0 clean at high and above; 1 a high or critical finding; 2 the invocation is wrong; 3 the scan is incomplete; 4 the report could not be written.\nBuilt by Adam (ADAM) — https://github.com/wisent-ai/codespy"
 )]
 struct Arguments {
     /// Path to scan (file or directory, default: current directory)
@@ -91,13 +97,13 @@ fn main() -> ExitCode {
     }
     if !arguments.path.exists() {
         eprintln!("Error: Path '{}' does not exist.", arguments.path.display());
-        return ExitCode::FAILURE;
+        return ExitCode::from(USAGE_EXIT);
     }
     let min_severity = match parse_severity(&arguments.severity) {
         Ok(severity) => severity,
         Err(message) => {
             eprintln!("Error: {message}");
-            return ExitCode::FAILURE;
+            return ExitCode::from(USAGE_EXIT);
         }
     };
     let result = match run_scan(&arguments.path, min_severity) {
@@ -124,7 +130,7 @@ fn main() -> ExitCode {
         Some(file) => {
             if let Err(error) = std::fs::write(file, &output) {
                 eprintln!("Error: cannot write {}: {error}", file.display());
-                return ExitCode::FAILURE;
+                return ExitCode::from(REPORT_UNWRITTEN_EXIT);
             }
             println!("Report written to {}", file.display());
         }

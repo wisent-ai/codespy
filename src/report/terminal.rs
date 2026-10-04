@@ -21,8 +21,6 @@ const LINE_COUNT_WIDTH: usize = 8;
 const SUMMARY_SEVERITY_WIDTH: usize = 10;
 const FINDING_SEVERITY_WIDTH: usize = 8;
 const LINE_NUMBER_WIDTH: usize = 5;
-/// How much of a finding's line the report shows.
-const SHOWN_LINE_CHARS: usize = 80;
 
 fn severity_color(severity: Severity) -> &'static str {
     match severity {
@@ -101,7 +99,7 @@ pub fn format_terminal(result: &ScanResult, show_fix: bool, use_color: bool) -> 
                 "  {color}{name:<FINDING_SEVERITY_WIDTH$}{reset}  L{:<LINE_NUMBER_WIDTH$} [{}] {}",
                 finding.line_number, finding.rule_id, finding.title,
             ));
-            let shown: String = finding.line_content.trim().chars().take(SHOWN_LINE_CHARS).collect();
+            let shown = finding.line_content.trim();
             lines.push(format!("           {dim}{shown}{reset}"));
             if show_fix && !finding.suggestion.is_empty() {
                 lines.push(format!("           💡 {}", finding.suggestion));

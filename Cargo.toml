@@ -1,6 +1,6 @@
 [package]
 name = "codespy"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 description = "Fast, offline code security scanner and quality analyzer."
 license = "MIT"
@@ -12,6 +12,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "codespy"
 path = "src/main.rs"
+
+[[test]]
+name = "scan-policy"
+path = "tests/scanning/policy.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

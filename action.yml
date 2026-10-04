@@ -34,6 +34,9 @@ inputs:
     description: 'Automatically upload SARIF results to GitHub Code Scanning (requires sarif format)'
     required: false
     default: 'true'
+  scoring-policy:
+    description: 'Path to an explicit scoring policy JSON; omitted means no score or grade'
+    required: false
 
 outputs:
   total-findings:
@@ -52,11 +55,14 @@ outputs:
     description: 'Number of low findings'
     value: ${{ steps.scan.outputs.low_count }}
   security-score:
-    description: 'Security score (0-100)'
+    description: 'Score under the supplied policy, or null when unavailable'
     value: ${{ steps.scan.outputs.security_score }}
   security-grade:
-    description: 'Security grade (A+ to F)'
+    description: 'Grade under the supplied policy, or null when unavailable'
     value: ${{ steps.scan.outputs.security_grade }}
+  scoring-policy:
+    description: 'JSON of the policy used, or null when none was supplied'
+    value: ${{ steps.scan.outputs.scoring_policy }}
   sarif-file:
     description: 'Path to SARIF output file (if generated)'
     value: ${{ steps.scan.outputs.sarif_file }}
@@ -85,8 +91,14 @@ runs:
         OUTPUT_FILE: ${{ inputs.output-file }}
         SHOW_FIXES: ${{ inputs.show-fixes }}
         FAIL_LEVEL: ${{ inputs.fail-on-findings }}
+        SCORING_POLICY: ${{ inputs.scoring-policy }}
       run: |
         args=("$SCAN_PATH" --severity "$SEVERITY" --no-color)
+        policy_args=()
+        if [ -n "$SCORING_POLICY" ]; then
+          policy_args+=(--scoring-policy "$SCORING_POLICY")
+          args+=("${policy_args[@]}")
+        fi
         if [ "$SHOW_FIXES" = "true" ]; then
           args+=(--fix)
         fi
@@ -105,10 +117,13 @@ runs:
         # The JSON report states the counts, score and grade. A report that was
         # not written is a failed scan, not a clean one.
         JSON_TMP=$(mktemp)
-        codespy "$SCAN_PATH" --severity "$SEVERITY" --format json -o "$JSON_TMP" --no-color \
-          >/dev/null 2>&1 || true
-        if [ ! -s "$JSON_TMP" ]; then
-          echo "::error::codespy wrote no JSON report for $SCAN_PATH"
+        set +e
+        codespy "$SCAN_PATH" --severity "$SEVERITY" "${policy_args[@]}" --format json -o "$JSON_TMP" --no-color
+        JSON_EXIT=$?
+        set -e
+        if { [ "$JSON_EXIT" -ne 0 ] && [ "$JSON_EXIT" -ne 1 ]; } || [ ! -s "$JSON_TMP" ]; then
+          rm -f "$JSON_TMP"
+          echo "::error::codespy JSON report failed for $SCAN_PATH (exit $JSON_EXIT); see diagnostics above"
           exit 1
         fi
         TOTAL=$(jq -r .total_findings "$JSON_TMP")
@@ -118,6 +133,9 @@ runs:
         LOW=$(jq -r .severity_counts.low "$JSON_TMP")
         SCORE=$(jq -r .security_score "$JSON_TMP")
         GRADE=$(jq -r .security_grade "$JSON_TMP")
+        POLICY=$(jq -c .scoring.policy "$JSON_TMP")
+        SCORE_TOP=$(jq -r .scoring.policy.top_score "$JSON_TMP")
+        SCORE_REASON=$(jq -r '.scoring.reason // empty' "$JSON_TMP")
         rm -f "$JSON_TMP"
 
         {
@@ -128,6 +146,7 @@ runs:
           echo "low_count=$LOW"
           echo "security_score=$SCORE"
           echo "security_grade=$GRADE"
+          echo "scoring_policy=$POLICY"
         } >> "$GITHUB_OUTPUT"
 
         # The scan in the requested format. Exit 1 only means findings at high
@@ -156,13 +175,23 @@ runs:
           echo ""
           echo "| Metric | Value |"
           echo "|--------|-------|"
-          echo "| Security Score | **$SCORE/100** (Grade: $GRADE) |"
+          if [ "$SCORE" = "null" ]; then
+            echo "| Security Score | Unavailable: $SCORE_REASON |"
+          else
+            echo "| Security Score | **$SCORE/$SCORE_TOP** (Grade: $GRADE) |"
+          fi
           echo "| Total Findings | $TOTAL |"
           if [ "$CRITICAL" -gt 0 ]; then echo "| :red_circle: Critical | **$CRITICAL** |"; fi
           if [ "$HIGH" -gt 0 ]; then echo "| :orange_circle: High | **$HIGH** |"; fi
           if [ "$MEDIUM" -gt 0 ]; then echo "| :yellow_circle: Medium | $MEDIUM |"; fi
           if [ "$LOW" -gt 0 ]; then echo "| :large_blue_circle: Low | $LOW |"; fi
           echo ""
+          if [ "$POLICY" != "null" ]; then
+            echo "Scoring policy:"
+            echo '```json'
+            printf '%s\n' "$POLICY"
+            echo '```'
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
 
         SHOULD_FAIL=0
@@ -176,7 +205,7 @@ runs:
           SHOULD_FAIL=1
         fi
         if [ "$SHOULD_FAIL" -eq 1 ]; then
-          echo "::error::codespy found findings at or above '$FAIL_LEVEL' severity. Score: $SCORE/100 ($GRADE)"
+          echo "::error::codespy found findings at or above '$FAIL_LEVEL' severity; scoring does not override this threshold"
           exit 1
         fi
 

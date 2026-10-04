@@ -3,12 +3,11 @@
 use crate::identity::VERSION;
 use crate::model::{ScanResult, Severity};
 
-use super::{by_file, compute_score, score_to_grade, summary_order, thousands};
+use super::{by_file, summary_order, thousands, ScoringReport};
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
-const GREEN: &str = "\x1b[32m";
 const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
@@ -32,18 +31,10 @@ fn severity_color(severity: Severity) -> &'static str {
     }
 }
 
-fn grade_color(grade: &str) -> &'static str {
-    match grade {
-        "A" | "A+" => GREEN,
-        "B" | "B+" => CYAN,
-        "C" => YELLOW,
-        _ => RED,
-    }
-}
 
 /// The scan as the terminal report writes it; with `use_color` it carries
 /// ANSI colours, with `show_fix` each finding's suggestion.
-pub fn format_terminal(result: &ScanResult, show_fix: bool, use_color: bool) -> String {
+pub fn format_terminal(result: &ScanResult, scoring: &ScoringReport<'_>, show_fix: bool, use_color: bool) -> String {
     let paint = |code: &'static str| if use_color { code } else { "" };
     let (bold, dim, reset) = (paint(BOLD), paint(DIM), paint(RESET));
     let rule = "─".repeat(RULE_WIDTH);
@@ -56,6 +47,11 @@ pub fn format_terminal(result: &ScanResult, show_fix: bool, use_color: bool) -> 
         format!("  Time:    {:.0}ms", result.scan_duration_ms),
         String::new(),
     ];
+    lines.push(format!("{bold}{}{reset}", scoring.summary()));
+    if scoring.policy.is_some() {
+        lines.push(format!("Scoring policy: {}", scoring.policy_json()));
+    }
+    lines.push(String::new());
 
     if !result.language_stats.is_empty() {
         lines.push(format!("{bold}Languages:{reset}"));
@@ -108,10 +104,6 @@ pub fn format_terminal(result: &ScanResult, show_fix: bool, use_color: bool) -> 
     }
     lines.push(format!("\n{dim}{rule}{reset}"));
 
-    let score = compute_score(result);
-    let grade = score_to_grade(score);
-    let color = paint(grade_color(grade));
-    lines.push(format!("\n{bold}Security Score: {color}{score}/100 (Grade: {grade}){reset}"));
     lines.push(String::new());
     lines.join("\n")
 }

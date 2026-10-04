@@ -6,25 +6,26 @@ use serde_json::Value;
 
 use crate::model::ScanResult;
 
-use super::{compute_score, score_to_grade};
+use super::ScoringReport;
 
 /// The first code point JSON writes as an escape rather than as itself.
 const FIRST_NON_ASCII: u32 = 0x80;
 
-/// Format scan results as JSON. The score and grade close the document: the
-/// GitHub Action reads them for its `security-score` and `security-grade`
-/// outputs, which had no source before and always read 100 and A+.
-pub fn format_json(result: &ScanResult) -> String {
+/// Format findings with the supplied policy and assessment, or the reason
+/// no score was produced. The Action preserves unavailable scores as null.
+pub fn format_json(result: &ScanResult, scoring: &ScoringReport<'_>) -> String {
     let mut document = result.to_json();
-    let score = compute_score(result);
-    document["security_score"] = score.into();
-    document["security_grade"] = score_to_grade(score).into();
+    document["security_score"] = serde_json::json!(scoring.score);
+    document["security_grade"] = serde_json::json!(scoring.grade);
+    document["scoring"] = serde_json::json!(scoring);
     pretty_ascii(&document)
 }
 
 /// Format scan results as SARIF 2.1.0.
-pub fn format_sarif(result: &ScanResult) -> String {
-    pretty_ascii(&result.to_sarif())
+pub fn format_sarif(result: &ScanResult, scoring: &ScoringReport<'_>) -> String {
+    let mut document = result.to_sarif();
+    document["runs"][0]["properties"] = serde_json::json!({ "scoring": scoring });
+    pretty_ascii(&document)
 }
 
 /// Two-space indented JSON with every character outside ASCII escaped as

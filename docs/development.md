@@ -56,5 +56,74 @@ or lists a full-version tag newer than the baseline. No second checkout is made.
 best published artifact; releases from before the Rust port (the `codespy.py`
 tags) are read from the surface the baseline already records for them. In every
 report, `severity_counts` names all five severities, with `0` for the ones no
-finding carries; the JSON report also states `security_score` and
-`security_grade`, which the Action publishes as outputs.
+finding carries. JSON `security_score` and `security_grade` are nullable; the
+Action preserves unavailable values as `null` rather than reporting a clean
+score. The `scoring` object contains the exact supplied policy and any reason
+that scoring was unavailable; SARIF includes it in `runs[].properties`.
+
+## Scoring policy
+
+Scanning has no file-size exclusion. Known directory exclusions and supported
+language selection still apply. Reading a selected file can fail with exit 3;
+it is never silently excluded because it exceeds a byte limit.
+
+Scoring is optional and never changes the finding-based exit status.
+`codespy . --format json --scoring-policy policy.json --output report.json`
+reads the supplied policy before scanning. Without that flag, reports contain
+findings and explain that no scoring policy was supplied. An empty scan has no
+score even when a policy is supplied. No default policy file is installed.
+
+The JSON object requires all of these fields; unknown fields are refused:
+
+| Field | Meaning and constraint |
+|---|---|
+| `top_score` | positive finite maximum score |
+| `lines_per_size_unit` | positive finite number of scanned lines per size unit |
+| `leniency_per_size_unit` | finite nonnegative reduction factor; zero disables size leniency |
+| `minimum_size_factor` | finite nonnegative floor on size units |
+| `deductions` | finite nonnegative weights for each of `critical`, `high`, `medium`, `low`, `info` |
+| `grades` | descending `{ "floor": number, "label": text }` entries covering the score range; the final floor is zero |
+
+The formula is `top_score - sum(deductions) / (1 + size * leniency)`, where
+`size = max(lines_scanned / lines_per_size_unit, minimum_size_factor)`.
+The result is rounded to the nearest integer, halves to even, then clamped
+between zero and `top_score`. The first grade whose floor the score meets wins.
+Grade floors cannot repeat or exceed the maximum. Labels must be nonempty
+single-line text without control characters.
+
+This example is an input illustration, **not a recommended security policy**:
+
+```json
+{
+  "top_score": 20,
+  "lines_per_size_unit": 1,
+  "leniency_per_size_unit": 0,
+  "minimum_size_factor": 0,
+  "deductions": {"critical": 10, "high": 4, "medium": 2, "low": 1, "info": 0},
+  "grades": [{"floor": 16, "label": "review"}, {"floor": 0, "label": "investigate"}]
+}
+```
+
+With that policy, one high finding scores 16 and receives `review`, regardless
+of repository size. Its process exit status is still 1. Every report records
+all policy values so that the score is interpretable without the input file.
+Terminal and Markdown reports display them; the Action summary does too.
+The Action's optional `scoring-policy` input passes the same file to both its
+machine report and the selected report format.
+
+An unreadable file, malformed JSON, missing field, invalid bound or invalid
+grade sequence is an invocation error (exit 2) naming the policy file and the
+cause. Arithmetic overflow refuses scoring with exit 2 instead of emitting an
+invented score. The Action retains those diagnostics and fails without a
+successful report. It never substitutes zero or the maximum for an absent score.
+
+## Scan-policy regression journeys
+
+`cargo test --test scan-policy` runs the real CLI on isolated source files under
+`target/scan-policy/`. It covers a finding beyond the former byte ceiling,
+operator-weighted scores and grade boundaries, unavailable scores, policy
+refusals, and each report format. Input files are removed after each case;
+commands, exit statuses, stdout, stderr, reports and the source revision remain
+in that run's evidence directory. This is a local offline scanner: the actual
+dependencies are its filesystem and compiled rule catalogue, not a provider
+simulation. A source change without this run is not a passed qualification.

@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use clap::{ArgAction, CommandFactory, Parser, ValueEnum};
 
 use codespy::model::Severity;
-use codespy::report::{format_json, format_markdown, format_sarif, format_terminal};
+use codespy::report::{format_json, format_markdown, format_sarif, format_terminal, ScoringPolicy, ScoringReport};
 use codespy::scanner::run_scan;
 
 // The exit statuses, each with one meaning (cli.md rule 10): 0 the scan is
@@ -57,6 +57,9 @@ struct Arguments {
     /// Write output to file instead of stdout
     #[arg(long, short = 'o')]
     output: Option<PathBuf>,
+    /// JSON scoring policy; without it findings are reported without a score
+    #[arg(long, value_name = "PATH")]
+    scoring_policy: Option<PathBuf>,
     /// Print the version
     #[arg(long, short = 'v', action = ArgAction::Version)]
     version: Option<bool>,
@@ -106,6 +109,13 @@ fn main() -> ExitCode {
             return ExitCode::from(USAGE_EXIT);
         }
     };
+    let policy = match arguments.scoring_policy.as_deref().map(ScoringPolicy::load).transpose() {
+        Ok(policy) => policy,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            return ExitCode::from(USAGE_EXIT);
+        }
+    };
     let result = match run_scan(&arguments.path, min_severity) {
         Ok(result) => result,
         Err(error) => {
@@ -115,15 +125,22 @@ fn main() -> ExitCode {
             return ExitCode::from(INCOMPLETE_SCAN_EXIT);
         }
     };
+    let scoring = match ScoringReport::new(&result, policy.as_ref()) {
+        Ok(scoring) => scoring,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            return ExitCode::from(USAGE_EXIT);
+        }
+    };
 
     let use_color = !arguments.no_color
         && arguments.format == Format::Terminal
         && std::io::stdout().is_terminal();
     let output = match arguments.format {
-        Format::Json => format_json(&result),
-        Format::Sarif => format_sarif(&result),
-        Format::Markdown => format_markdown(&result, arguments.fix),
-        Format::Terminal => format_terminal(&result, arguments.fix, use_color),
+        Format::Json => format_json(&result, &scoring),
+        Format::Sarif => format_sarif(&result, &scoring),
+        Format::Markdown => format_markdown(&result, &scoring, arguments.fix),
+        Format::Terminal => format_terminal(&result, &scoring, arguments.fix, use_color),
     };
 
     match &arguments.output {

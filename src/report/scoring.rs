@@ -1,56 +1,155 @@
-//! The scanner-local score and grade summarising one set of findings.
+//! Optional, explicitly supplied scoring policy. Findings never need a score.
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 use crate::model::{ScanResult, Severity};
 
-/// A clean codebase scores the top score; each finding takes its severity's
-/// deduction off it.
-pub const TOP_SCORE: i64 = 100;
-/// Larger codebases get some leniency: one size unit per this many scanned
-/// lines, and each unit softens the deduction by this fraction.
-const LINES_PER_SIZE_UNIT: f64 = 1000.0;
-const LENIENCY_PER_SIZE_UNIT: f64 = 0.1;
-/// The smallest size factor: a codebase under one unit is treated as one.
-const MINIMUM_SIZE_FACTOR: f64 = 1.0;
-/// The lowest score that still earns each letter grade, best first; anything
-/// below the last is an F.
-const GRADE_FLOORS: [(i64, &str); 6] = [(95, "A+"), (90, "A"), (80, "B+"), (70, "B"), (60, "C"), (50, "D")];
-const FAILING_GRADE: &str = "F";
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScoringPolicy {
+    top_score: f64,
+    lines_per_size_unit: f64,
+    leniency_per_size_unit: f64,
+    minimum_size_factor: f64,
+    deductions: Deductions,
+    grades: Vec<Grade>,
+}
 
-/// What one finding of `severity` takes off the score.
-fn deduction(severity: Severity) -> f64 {
-    match severity {
-        Severity::Critical => 20.0,
-        Severity::High => 10.0,
-        Severity::Medium => 5.0,
-        Severity::Low => 2.0,
-        Severity::Info => 0.0,
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Deductions {
+    critical: f64,
+    high: f64,
+    medium: f64,
+    low: f64,
+    info: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Grade {
+    floor: f64,
+    label: String,
+}
+
+impl ScoringPolicy {
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("cannot read scoring policy {}: {error}", path.display()))?;
+        let policy: Self = serde_json::from_str(&text)
+            .map_err(|error| format!("invalid scoring policy {}: {error}", path.display()))?;
+        policy.validate()
+            .map_err(|error| format!("invalid scoring policy {}: {error}", path.display()))?;
+        Ok(policy)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        for (name, value) in [
+            ("top_score", self.top_score),
+            ("lines_per_size_unit", self.lines_per_size_unit),
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(format!("{name} must be finite and greater than zero"));
+            }
+        }
+        for (name, value) in [
+            ("leniency_per_size_unit", self.leniency_per_size_unit),
+            ("minimum_size_factor", self.minimum_size_factor),
+            ("deductions.critical", self.deductions.critical),
+            ("deductions.high", self.deductions.high),
+            ("deductions.medium", self.deductions.medium),
+            ("deductions.low", self.deductions.low),
+            ("deductions.info", self.deductions.info),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(format!("{name} must be finite and nonnegative"));
+            }
+        }
+        if self.grades.last().map(|grade| grade.floor) != Some(0.0) {
+            return Err("grades must end with a zero floor to cover every possible score".into());
+        }
+        let mut previous = None;
+        for grade in &self.grades {
+            if !grade.floor.is_finite() || grade.floor < 0.0 || grade.floor > self.top_score {
+                return Err("every grade floor must be between zero and top_score".into());
+            }
+            if previous.is_some_and(|floor| grade.floor >= floor) {
+                return Err("grade floors must be strictly descending".into());
+            }
+            if grade.label.trim().is_empty() || grade.label.chars().any(char::is_control) {
+                return Err("grade labels must be nonempty single-line text without control characters".into());
+            }
+            previous = Some(grade.floor);
+        }
+        Ok(())
+    }
+
+    fn deduction(&self, severity: Severity) -> f64 {
+        match severity {
+            Severity::Critical => self.deductions.critical,
+            Severity::High => self.deductions.high,
+            Severity::Medium => self.deductions.medium,
+            Severity::Low => self.deductions.low,
+            Severity::Info => self.deductions.info,
+        }
     }
 }
 
-/// Half to even, as the score has always been rounded.
+/// The complete policy travels with every report, not just its file name.
+#[derive(Debug, Serialize)]
+pub struct ScoringReport<'a> {
+    pub policy: Option<&'a ScoringPolicy>,
+    pub score: Option<f64>,
+    pub grade: Option<&'a str>,
+    pub reason: Option<&'static str>,
+}
+
+impl<'a> ScoringReport<'a> {
+    pub fn new(result: &ScanResult, policy: Option<&'a ScoringPolicy>) -> Result<Self, String> {
+        let mut report = Self { policy, score: None, grade: None, reason: None };
+        let Some(policy) = policy else {
+            report.reason = Some("No scoring policy supplied; use --scoring-policy PATH to request a score");
+            return Ok(report);
+        };
+        policy.validate()?;
+        if result.files_scanned == 0 {
+            report.reason = Some("No supported source files were scanned");
+            return Ok(report);
+        }
+        let total: f64 = result.findings.iter().map(|finding| policy.deduction(finding.severity)).sum();
+        let size_factor =
+            (result.lines_scanned as f64 / policy.lines_per_size_unit).max(policy.minimum_size_factor);
+        let divisor = 1.0 + size_factor * policy.leniency_per_size_unit;
+        if !total.is_finite() || !size_factor.is_finite() || !divisor.is_finite() {
+            return Err("scoring policy calculation overflowed for this scan; no score was produced".into());
+        }
+        let score = round_half_even(policy.top_score - total / divisor).clamp(0.0, policy.top_score);
+        report.score = Some(score);
+        report.grade = policy.grades.iter()
+            .find(|grade| score >= grade.floor).map(|grade| grade.label.as_str());
+        Ok(report)
+    }
+
+    pub fn summary(&self) -> String {
+        match (self.score, self.grade, self.policy) {
+            (Some(score), Some(grade), Some(policy)) =>
+                format!("Security score: {score}/{} (Grade: {grade})", policy.top_score),
+            _ => format!("Security score unavailable: {}", self.reason.unwrap_or("no assessment")),
+        }
+    }
+
+    pub fn policy_json(&self) -> String {
+        serde_json::to_string(&self.policy).expect("validated scoring policy serializes")
+    }
+}
+
+/// Half to even is a rounding operation, not a policy weight.
 fn round_half_even(value: f64) -> f64 {
     let floor = value.floor();
     if value - floor != 0.5 {
         return value.round();
     }
     if floor % 2.0 == 0.0 { floor } else { floor + 1.0 }
-}
-
-/// A security score from 0 to 100 for the findings of one scan.
-pub fn compute_score(result: &ScanResult) -> i64 {
-    if result.files_scanned == 0 {
-        return TOP_SCORE;
-    }
-    let total: f64 = result.findings.iter().map(|finding| deduction(finding.severity)).sum();
-    let size_factor = (result.lines_scanned as f64 / LINES_PER_SIZE_UNIT).max(MINIMUM_SIZE_FACTOR);
-    let adjusted = total / (1.0 + size_factor * LENIENCY_PER_SIZE_UNIT);
-    (round_half_even(TOP_SCORE as f64 - adjusted) as i64).clamp(0, TOP_SCORE)
-}
-
-/// The letter grade a score earns.
-pub fn score_to_grade(score: i64) -> &'static str {
-    GRADE_FLOORS
-        .iter()
-        .find(|(floor, _)| score >= *floor)
-        .map_or(FAILING_GRADE, |(_, grade)| grade)
 }

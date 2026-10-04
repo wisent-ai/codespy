@@ -3,7 +3,7 @@
 use crate::identity::{INFORMATION_URI, VERSION};
 use crate::model::{ScanResult, Severity};
 
-use super::{by_file, compute_score, score_to_grade, summary_order, thousands};
+use super::{by_file, summary_order, thousands, ScoringReport};
 
 /// One mark per severity; every severity the model defines has one.
 fn severity_mark(severity: Severity) -> &'static str {
@@ -17,9 +17,7 @@ fn severity_mark(severity: Severity) -> &'static str {
 }
 
 /// The scan as a Markdown report; with `show_fix` each finding's suggestion.
-pub fn format_markdown(result: &ScanResult, show_fix: bool) -> String {
-    let score = compute_score(result);
-    let grade = score_to_grade(score);
+pub fn format_markdown(result: &ScanResult, scoring: &ScoringReport<'_>, show_fix: bool) -> String {
     let mut lines = vec![
         "# codespy Security Report".to_owned(),
         String::new(),
@@ -28,13 +26,24 @@ pub fn format_markdown(result: &ScanResult, show_fix: bool) -> String {
         format!("**Lines scanned:** {}  ", thousands(result.lines_scanned)),
         format!("**Scan time:** {:.0}ms  ", result.scan_duration_ms),
         String::new(),
-        format!("## Security Score: {score}/100 (Grade: {grade})"),
+        format!("## {}", scoring.summary()),
         String::new(),
+    ];
+    if scoring.policy.is_some() {
+        lines.extend([
+            "Scoring policy:".to_owned(),
+            "```json".to_owned(),
+            scoring.policy_json(),
+            "```".to_owned(),
+            String::new(),
+        ]);
+    }
+    lines.extend([
         "## Summary".to_owned(),
         String::new(),
         "| Severity | Count |".to_owned(),
         "|----------|-------|".to_owned(),
-    ];
+    ]);
     let counts = result.severity_counts();
     for severity in summary_order() {
         let count = counts[severity.as_str()];

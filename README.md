@@ -27,7 +27,7 @@ secure.
 [GitHub Action](#github-action) · [Repository layout](#repository-layout) ·
 [Canonical repository](https://github.com/wisent-ai/codespy)
 
-Current scanner version: `2.0.0`. The release is one Rust program, `codespy`,
+Current source version: `3.0.0`. The release is one Rust program, `codespy`,
 built from this repository with Cargo; see [Repository layout](#repository-layout).
 
 ## Problem and intended users
@@ -48,7 +48,7 @@ prioritizing deeper manual, semantic, dependency, and runtime analysis.
   directories excluded;
 - source classification for Python, JavaScript, TypeScript, Go, Rust, Java,
   Ruby, PHP, C, C++, C#, shell, YAML, Dockerfile, Terraform, and SQL;
-- per-file size bound of 1 MB;
+- supported source files scanned regardless of their byte size;
 - rules for common secrets, injection sinks, insecure configuration, quality,
   performance, deprecation, and supply-chain patterns;
 - severity filtering, fix explanations, and terminal, JSON, Markdown and SARIF
@@ -66,8 +66,8 @@ prioritizing deeper manual, semantic, dependency, and runtime analysis.
   generated flows, runtime configuration, encoded values, or framework-specific
   semantics.
 - Fix text is guidance, not an automatic patch or proof that remediation is
-  complete. The numeric score and letter grade summarize this scanner's findings
-  only; they are not an industry rating or risk acceptance decision.
+  complete. Scores and grades exist only under an explicitly supplied scoring
+  policy; they are not an industry rating or risk acceptance decision.
 - Local scanning must remain complete without a Wisent account, hosted service,
   paid rule pack, or repository size limit. Hosted scheduling, cross-repository
   policy, suppressions, triage, retained evidence, and support are separate
@@ -87,7 +87,7 @@ prioritizing deeper manual, semantic, dependency, and runtime analysis.
 
 | Use case | Actor | Outcome | Boundary |
 |---|---|---|---|
-| Scan a local repository | developer | matching rules with severity, path, line, excerpt, and optional suggestion | reads files and sends no source; ignored, large, binary, unsupported, and semantically indirect cases stay unseen |
+| Scan a local repository | developer | matching rules with severity, path, line, excerpt, and optional suggestion | reads files and sends no source; ignored, binary, unsupported, and semantically indirect cases stay unseen |
 | Produce a review artifact | maintainer or security reviewer | JSON, Markdown, or SARIF another tool or reviewer can read | pattern matches at scan time, with no claim about repository identity, provenance, or remediation |
 | Gate a CI change | repository administrator | high or critical findings fail the step; SARIF uploads to Code Scanning | policy must account for false positives, pinned action revisions, rule changes, and findings outside this scope |
 
@@ -97,7 +97,7 @@ prioritizing deeper manual, semantic, dependency, and runtime analysis.
 local path
    │
    ├─ skip known artifact/dependency directories
-   ├─ classify supported text files (<= 1 MB each)
+   ├─ classify supported text files (no byte-size exclusion)
    └─ evaluate local pattern rules
              │
              ▼
@@ -124,7 +124,7 @@ codespy --version
 codespy . --format sarif --output codespy-results.sarif --severity medium
 ```
 
-Expected result: `codespy --version` prints `codespy 2.0.0`; the scan writes a
+Expected result from this source: `codespy --version` prints `codespy 3.0.0`; the scan writes a
 SARIF report. Exit status is `1` when the filtered result contains a high or
 critical finding and `0` otherwise. A non-zero finding status is scan output,
 not necessarily a scanner crash.
@@ -138,6 +138,7 @@ codespy [path]
   --fix
   --no-color
   --output, -o <path>
+  --scoring-policy <path>
   --version, -v
 ```
 
@@ -145,6 +146,9 @@ codespy [path]
 - The default format is terminal.
 - The default minimum severity is `info`.
 - `--fix` displays rule suggestions; it never changes source.
+- `--scoring-policy` reads a complete JSON scoring policy. No policy means no
+  numeric score or grade, not a perfect score. The full policy accompanies the
+  report. See [policy fields, examples and refusals](docs/development.md#scoring-policy).
 - Exit status: `0` no high or critical finding in the filtered result; `1` at
   least one; `2` the invocation is wrong (a path that does not exist, an
   unknown severity or flag); `3` the scan could not read everything it
@@ -191,10 +195,12 @@ can alter CI gates.
 
 ## Output formats
 
-Terminal output groups findings for a person and prints the scanner-local score.
-JSON carries metadata, counts, paths, lines, findings, and the score and grade;
-Markdown renders review
-tables with optional suggestions; SARIF feeds GitHub Code Scanning and compatible
+Terminal output groups findings and shows the score under the supplied policy,
+or explains why no score is available. JSON carries metadata, counts, paths,
+lines, findings, nullable `security_score` and `security_grade`, and a `scoring`
+object containing the policy and any unavailability reason. Markdown includes
+the same assessment and policy; SARIF records them in the run's properties for
+GitHub Code Scanning and compatible
 viewers. Do not publish reports containing secret excerpts or private paths
 without redaction and access review.
 
@@ -232,13 +238,19 @@ A more explicit repository gate:
 | `fail-on-findings` | `high` | action failure threshold; `none` disables it |
 | `show-fixes` | `true` | include suggestions |
 | `upload-sarif` | `true` | upload SARIF when permissions allow |
+| `scoring-policy` | omitted | path to a complete scoring policy JSON; no built-in scoring weights |
 
 The action builds `codespy` from the pinned ref with Cargo (GitHub-hosted
 runners carry a Rust toolchain) and exposes total, critical, high, medium and
-low counts plus the scanner-local score and grade, read from the JSON report.
+low counts plus nullable score/grade outputs and a `scoring-policy` JSON output.
+The job summary shows the policy or the reason scoring is unavailable.
 Version 2 dropped the `python-version` input along with the Python scanner.
 Pin a full commit SHA when your supply-chain policy requires an immutable action
 revision.
+The scoring-policy contract is a version 3 source change. A workflow pinned to
+`v2` keeps version 2 behavior; use a reviewed commit containing the version 3
+change to opt in. Scores are now nullable and Rust report functions take a
+`ScoringReport`; consumers must not interpret missing scores as a clean scan.
 
 ## Baselines and remediation
 
@@ -263,7 +275,7 @@ and other high-impact code even when Codespy is clean.
 
 ## Project status and support
 
-- **Maturity:** public development scanner, version `2.0.0`, offering an
+- **Maturity:** public development scanner, source version `3.0.0`, offering an
   offline scan and four report formats. Hosted continuous scanning,
   organization policy, suppression governance, triage, retained evidence, and
   support are not provided by the local program.

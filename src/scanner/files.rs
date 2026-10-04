@@ -13,8 +13,6 @@ use serde::Deserialize;
 /// The file-type table: extensions per language, exact names, and the
 /// directories a scan never enters.
 const TABLE: &str = include_str!("languages.json");
-/// A file larger than this many bytes is not read.
-pub const MAX_FILE_SIZE: u64 = 1_000_000;
 
 #[derive(Deserialize)]
 struct Table {
@@ -63,9 +61,9 @@ fn skipped_directory(name: &str) -> bool {
 
 /// Every file under `root` a scan reads, with its language. A single file is
 /// read when its language is known; a directory is walked without following
-/// directory links, skipping hidden and build directories and files larger
-/// than [`MAX_FILE_SIZE`]. A directory or file the walk cannot open or
-/// measure is an error naming it, never a silent gap in the scan.
+/// directory links, skipping hidden and build directories. File size never
+/// excludes a supported source file. A directory or file the walk cannot
+/// open is an error naming it, never a silent gap in the scan.
 pub fn collect_files(root: &Path) -> Result<Vec<(PathBuf, &'static str)>, ScanError> {
     let walk = |path: &Path, error: io::Error| ScanError::Walk { path: path.to_path_buf(), error };
     let mut files = Vec::new();
@@ -89,10 +87,7 @@ pub fn collect_files(root: &Path) -> Result<Vec<(PathBuf, &'static str)>, ScanEr
                 continue;
             }
             let Some(language) = detect_language(&path) else { continue };
-            let metadata = fs::metadata(&path).map_err(|error| walk(&path, error))?;
-            if metadata.len() <= MAX_FILE_SIZE {
-                files.push((path, language));
-            }
+            files.push((path, language));
         }
     }
     Ok(files)

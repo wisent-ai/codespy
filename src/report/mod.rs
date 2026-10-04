@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use crate::model::{Finding, ScanResult, Severity};
 
 pub use markdown::format_markdown;
-pub use scoring::{compute_score, score_to_grade, TOP_SCORE};
+pub use scoring::{ScoringPolicy, ScoringReport};
 pub use structured::{format_json, format_sarif};
 pub use terminal::format_terminal;
 

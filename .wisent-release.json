@@ -10,7 +10,9 @@
   "platforms": {
     "linux-amd64": {
       "runner_platform": "linux-amd64",
-      "quality": [],
+      "quality": [
+        {"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"]}
+      ],
       "build": {
         "argv": ["cargo", "build", "--release", "--locked", "--target-dir", "target"]
       },

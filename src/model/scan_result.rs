@@ -40,7 +40,11 @@ fn round_half_even(value: f64, digits: i32) -> f64 {
     let scaled = value * scale;
     let floor = scaled.floor();
     let whole = if scaled - floor == 0.5 {
-        if floor % 2.0 == 0.0 { floor } else { floor + 1.0 }
+        if floor % 2.0 == 0.0 {
+            floor
+        } else {
+            floor + 1.0
+        }
     } else {
         scaled.round()
     };
@@ -55,8 +59,10 @@ impl ScanResult {
     /// Every severity, present or not, so a report never has to guess a
     /// missing one; least severe first.
     pub fn severity_counts(&self) -> IndexMap<&'static str, usize> {
-        let mut counts: IndexMap<&'static str, usize> =
-            Severity::ALL.iter().map(|severity| (severity.as_str(), 0)).collect();
+        let mut counts: IndexMap<&'static str, usize> = Severity::ALL
+            .iter()
+            .map(|severity| (severity.as_str(), 0))
+            .collect();
         for finding in &self.findings {
             *counts.entry(finding.severity.as_str()).or_default() += 1;
         }
@@ -101,7 +107,10 @@ impl ScanResult {
                 rule.insert("id".into(), json!(finding.rule_id));
                 rule.insert("name".into(), json!(finding.title));
                 rule.insert("shortDescription".into(), json!({ "text": finding.title }));
-                rule.insert("fullDescription".into(), json!({ "text": finding.description }));
+                rule.insert(
+                    "fullDescription".into(),
+                    json!({ "text": finding.description }),
+                );
                 rule.insert(
                     "defaultConfiguration".into(),
                     json!({ "level": finding.severity.sarif_level() }),

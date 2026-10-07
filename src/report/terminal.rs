@@ -31,10 +31,14 @@ fn severity_color(severity: Severity) -> &'static str {
     }
 }
 
-
 /// The scan as the terminal report writes it; with `use_color` it carries
 /// ANSI colours, with `show_fix` each finding's suggestion.
-pub fn format_terminal(result: &ScanResult, scoring: &ScoringReport<'_>, show_fix: bool, use_color: bool) -> String {
+pub fn format_terminal(
+    result: &ScanResult,
+    scoring: &ScoringReport<'_>,
+    show_fix: bool,
+    use_color: bool,
+) -> String {
     let paint = |code: &'static str| if use_color { code } else { "" };
     let (bold, dim, reset) = (paint(BOLD), paint(DIM), paint(RESET));
     let rule = "─".repeat(RULE_WIDTH);
@@ -42,7 +46,10 @@ pub fn format_terminal(result: &ScanResult, scoring: &ScoringReport<'_>, show_fi
         format!("\n{bold}codespy v{VERSION}{reset} — Code Security Scanner"),
         format!("{dim}{rule}{reset}"),
         format!("  Path:    {}", result.path),
-        format!("  Files:   {} scanned, {} skipped", result.files_scanned, result.files_skipped),
+        format!(
+            "  Files:   {} scanned, {} skipped",
+            result.files_scanned, result.files_skipped
+        ),
         format!("  Lines:   {}", thousands(result.lines_scanned)),
         format!("  Time:    {:.0}ms", result.scan_duration_ms),
         String::new(),
@@ -68,19 +75,26 @@ pub fn format_terminal(result: &ScanResult, scoring: &ScoringReport<'_>, show_fi
     }
 
     let counts = result.severity_counts();
-    lines.push(format!("{bold}Findings:{reset} {} total", result.finding_count()));
+    lines.push(format!(
+        "{bold}Findings:{reset} {} total",
+        result.finding_count()
+    ));
     for severity in summary_order() {
         let count = counts[severity.as_str()];
         if count > 0 {
             let name = severity.as_str().to_uppercase();
             let color = paint(severity_color(severity));
-            lines.push(format!("  {color}{name:<SUMMARY_SEVERITY_WIDTH$}{reset} {count}"));
+            lines.push(format!(
+                "  {color}{name:<SUMMARY_SEVERITY_WIDTH$}{reset} {count}"
+            ));
         }
     }
     lines.push(String::new());
 
     if result.findings.is_empty() {
-        lines.push(format!("  {bold}No issues found.{reset} Your code looks clean!"));
+        lines.push(format!(
+            "  {bold}No issues found.{reset} Your code looks clean!"
+        ));
         lines.push(String::new());
         return lines.join("\n");
     }

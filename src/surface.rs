@@ -25,7 +25,8 @@ use codespy::rules::rules;
 use codespy::scanner::scanned_suffixes;
 
 /// The two manifest sections callers address, and the prefix each is named by.
-const ACTION_SECTIONS: [(&str, &str); 2] = [("inputs:", "action-input"), ("outputs:", "action-output")];
+const ACTION_SECTIONS: [(&str, &str); 2] =
+    [("inputs:", "action-input"), ("outputs:", "action-output")];
 /// The indentation of a key directly under a top-level manifest section.
 const SECTION_KEY_INDENT: &str = "  ";
 
@@ -36,11 +37,16 @@ fn action_keys(manifest: &str) -> Vec<String> {
     let mut section: Option<&str> = None;
     for line in manifest.lines() {
         if !line.starts_with(' ') && !line.trim().is_empty() {
-            section = ACTION_SECTIONS.iter().find(|(heading, _)| line.trim_end() == *heading).map(|(_, prefix)| *prefix);
+            section = ACTION_SECTIONS
+                .iter()
+                .find(|(heading, _)| line.trim_end() == *heading)
+                .map(|(_, prefix)| *prefix);
             continue;
         }
         let Some(prefix) = section else { continue };
-        let Some(rest) = line.strip_prefix(SECTION_KEY_INDENT) else { continue };
+        let Some(rest) = line.strip_prefix(SECTION_KEY_INDENT) else {
+            continue;
+        };
         if rest.starts_with(' ') {
             continue;
         }
@@ -83,7 +89,11 @@ pub fn surface<F: ValueEnum>(command: &Command, action_manifest: &Path) -> io::R
         names.insert(format!("rule:{}", rule.id));
         names.insert(format!("category:{}", rule.category.as_str()));
     }
-    names.extend(Severity::ALL.iter().map(|severity| format!("severity:{}", severity.as_str())));
+    names.extend(
+        Severity::ALL
+            .iter()
+            .map(|severity| format!("severity:{}", severity.as_str())),
+    );
     for (language, suffixes) in scanned_suffixes() {
         names.insert(format!("language:{language}"));
         names.extend(suffixes.iter().map(|suffix| format!("ext:{suffix}")));

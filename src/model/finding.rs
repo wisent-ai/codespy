@@ -80,7 +80,10 @@ impl Finding {
             }]),
         );
         if !self.suggestion.is_empty() {
-            result.insert("properties".into(), json!({ "suggestion": self.suggestion }));
+            result.insert(
+                "properties".into(),
+                json!({ "suggestion": self.suggestion }),
+            );
         }
         Value::Object(result)
     }

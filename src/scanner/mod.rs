@@ -24,16 +24,28 @@ pub enum ScanError {
     /// A file the scan selected could not be read, so it was not scanned.
     Read { file: PathBuf, error: io::Error },
     /// A rule's pattern gave up on a file (the matcher's backtracking bound).
-    Pattern { rule: String, file: PathBuf, detail: String },
+    Pattern {
+        rule: String,
+        file: PathBuf,
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for ScanError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScanError::Walk { path, error } => write!(formatter, "cannot walk {}: {error}", path.display()),
-            ScanError::Read { file, error } => write!(formatter, "cannot read {}: {error}", file.display()),
+            ScanError::Walk { path, error } => {
+                write!(formatter, "cannot walk {}: {error}", path.display())
+            }
+            ScanError::Read { file, error } => {
+                write!(formatter, "cannot read {}: {error}", file.display())
+            }
             ScanError::Pattern { rule, file, detail } => {
-                write!(formatter, "rule {rule} could not be evaluated on {}: {detail}", file.display())
+                write!(
+                    formatter,
+                    "rule {rule} could not be evaluated on {}: {detail}",
+                    file.display()
+                )
             }
         }
     }
@@ -51,7 +63,10 @@ pub fn scan_file(
     rules: &[Rule],
     min_severity: Severity,
 ) -> Result<(Vec<Finding>, usize), ScanError> {
-    let bytes = fs::read(file_path).map_err(|error| ScanError::Read { file: file_path.to_path_buf(), error })?;
+    let bytes = fs::read(file_path).map_err(|error| ScanError::Read {
+        file: file_path.to_path_buf(),
+        error,
+    })?;
     let content = String::from_utf8_lossy(&bytes);
     let lines: Vec<&str> = content.split('\n').collect();
     let mut findings = Vec::new();
@@ -99,9 +114,14 @@ fn relative(file: &Path, root: &Path) -> String {
 /// rule order.
 pub fn run_scan(path: &Path, min_severity: Severity) -> Result<ScanResult, ScanError> {
     let started = Instant::now();
-    let root = std::path::absolute(path)
-        .map_err(|error| ScanError::Walk { path: path.to_path_buf(), error })?;
-    let mut result = ScanResult { path: root.to_string_lossy().into_owned(), ..ScanResult::default() };
+    let root = std::path::absolute(path).map_err(|error| ScanError::Walk {
+        path: path.to_path_buf(),
+        error,
+    })?;
+    let mut result = ScanResult {
+        path: root.to_string_lossy().into_owned(),
+        ..ScanResult::default()
+    };
     for (file, language) in collect_files(&root)? {
         let (mut findings, line_count) = scan_file(&file, language, rules(), min_severity)?;
         let shown = relative(&file, &root);
@@ -111,14 +131,20 @@ pub fn run_scan(path: &Path, min_severity: Severity) -> Result<ScanResult, ScanE
         result.findings.append(&mut findings);
         result.files_scanned += 1;
         result.lines_scanned += line_count;
-        let stats = result.language_stats.entry(language.to_owned()).or_default();
+        let stats = result
+            .language_stats
+            .entry(language.to_owned())
+            .or_default();
         stats.files += 1;
         stats.lines += line_count;
     }
     result.scan_duration_ms = started.elapsed().as_secs_f64() * MILLISECONDS_PER_SECOND;
     result.findings.sort_by(|left, right| {
-        (Reverse(left.severity), &left.file_path, left.line_number)
-            .cmp(&(Reverse(right.severity), &right.file_path, right.line_number))
+        (Reverse(left.severity), &left.file_path, left.line_number).cmp(&(
+            Reverse(right.severity),
+            &right.file_path,
+            right.line_number,
+        ))
     });
     Ok(result)
 }

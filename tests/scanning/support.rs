@@ -32,13 +32,27 @@ impl Journey {
         for (name, args) in [
             ("source-revision.txt", vec!["rev-parse", "HEAD"]),
             ("source-diff.patch", vec!["diff", "--binary", "HEAD"]),
-            ("source-status.txt", vec!["status", "--porcelain", "--untracked-files=all"]),
+            (
+                "source-status.txt",
+                vec!["status", "--porcelain", "--untracked-files=all"],
+            ),
         ] {
-            let output = Command::new("git").args(args).current_dir(repository).output().unwrap();
-            assert!(output.status.success(), "cannot record source identity: {output:?}");
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(repository)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "cannot record source identity: {output:?}"
+            );
             fs::write(root.join(name), output.stdout).unwrap();
         }
-        Self { root, inputs, next_run: 0 }
+        Self {
+            root,
+            inputs,
+            next_run: 0,
+        }
     }
 
     pub fn source(&self, name: &str, text: &str) -> PathBuf {
@@ -60,23 +74,34 @@ impl Journey {
         let report = run.join("report.txt");
         let binary = env!("CARGO_BIN_EXE_codespy");
         let mut command = Command::new(binary);
-        command.arg(input).args(["--format", format, "--no-color", "--output"]).arg(&report);
+        command
+            .arg(input)
+            .args(["--format", format, "--no-color", "--output"])
+            .arg(&report);
         if let Some(policy) = policy {
             command.arg("--scoring-policy").arg(policy);
             if let Ok(contents) = fs::read(policy) {
                 fs::write(run.join("policy.json"), contents).unwrap();
             }
         }
-        let arguments: Vec<_> = command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
+        let arguments: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
         let output = command.output().unwrap();
         fs::write(run.join("stdout.txt"), &output.stdout).unwrap();
         fs::write(run.join("stderr.txt"), &output.stderr).unwrap();
-        fs::write(run.join("command.json"), serde_json::to_vec_pretty(&json!({
-            "binary": binary,
-            "arguments": arguments,
-            "exit_status": output.status.code(),
-            "success": output.status.success(),
-        })).unwrap()).unwrap();
+        fs::write(
+            run.join("command.json"),
+            serde_json::to_vec_pretty(&json!({
+                "binary": binary,
+                "arguments": arguments,
+                "exit_status": output.status.code(),
+                "success": output.status.success(),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
         (output, report)
     }
 }

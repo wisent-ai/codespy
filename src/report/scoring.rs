@@ -40,7 +40,8 @@ impl ScoringPolicy {
             .map_err(|error| format!("cannot read scoring policy {}: {error}", path.display()))?;
         let policy: Self = serde_json::from_str(&text)
             .map_err(|error| format!("invalid scoring policy {}: {error}", path.display()))?;
-        policy.validate()
+        policy
+            .validate()
             .map_err(|error| format!("invalid scoring policy {}: {error}", path.display()))?;
         Ok(policy)
     }
@@ -79,7 +80,10 @@ impl ScoringPolicy {
                 return Err("grade floors must be strictly descending".into());
             }
             if grade.label.trim().is_empty() || grade.label.chars().any(char::is_control) {
-                return Err("grade labels must be nonempty single-line text without control characters".into());
+                return Err(
+                    "grade labels must be nonempty single-line text without control characters"
+                        .into(),
+                );
             }
             previous = Some(grade.floor);
         }
@@ -108,9 +112,15 @@ pub struct ScoringReport<'a> {
 
 impl<'a> ScoringReport<'a> {
     pub fn new(result: &ScanResult, policy: Option<&'a ScoringPolicy>) -> Result<Self, String> {
-        let mut report = Self { policy, score: None, grade: None, reason: None };
+        let mut report = Self {
+            policy,
+            score: None,
+            grade: None,
+            reason: None,
+        };
         let Some(policy) = policy else {
-            report.reason = Some("No scoring policy supplied; use --scoring-policy PATH to request a score");
+            report.reason =
+                Some("No scoring policy supplied; use --scoring-policy PATH to request a score");
             return Ok(report);
         };
         policy.validate()?;
@@ -118,25 +128,40 @@ impl<'a> ScoringReport<'a> {
             report.reason = Some("No supported source files were scanned");
             return Ok(report);
         }
-        let total: f64 = result.findings.iter().map(|finding| policy.deduction(finding.severity)).sum();
-        let size_factor =
-            (result.lines_scanned as f64 / policy.lines_per_size_unit).max(policy.minimum_size_factor);
+        let total: f64 = result
+            .findings
+            .iter()
+            .map(|finding| policy.deduction(finding.severity))
+            .sum();
+        let size_factor = (result.lines_scanned as f64 / policy.lines_per_size_unit)
+            .max(policy.minimum_size_factor);
         let divisor = 1.0 + size_factor * policy.leniency_per_size_unit;
         if !total.is_finite() || !size_factor.is_finite() || !divisor.is_finite() {
-            return Err("scoring policy calculation overflowed for this scan; no score was produced".into());
+            return Err(
+                "scoring policy calculation overflowed for this scan; no score was produced".into(),
+            );
         }
-        let score = round_half_even(policy.top_score - total / divisor).clamp(0.0, policy.top_score);
+        let score =
+            round_half_even(policy.top_score - total / divisor).clamp(0.0, policy.top_score);
         report.score = Some(score);
-        report.grade = policy.grades.iter()
-            .find(|grade| score >= grade.floor).map(|grade| grade.label.as_str());
+        report.grade = policy
+            .grades
+            .iter()
+            .find(|grade| score >= grade.floor)
+            .map(|grade| grade.label.as_str());
         Ok(report)
     }
 
     pub fn summary(&self) -> String {
         match (self.score, self.grade, self.policy) {
-            (Some(score), Some(grade), Some(policy)) =>
-                format!("Security score: {score}/{} (Grade: {grade})", policy.top_score),
-            _ => format!("Security score unavailable: {}", self.reason.unwrap_or("no assessment")),
+            (Some(score), Some(grade), Some(policy)) => format!(
+                "Security score: {score}/{} (Grade: {grade})",
+                policy.top_score
+            ),
+            _ => format!(
+                "Security score unavailable: {}",
+                self.reason.unwrap_or("no assessment")
+            ),
         }
     }
 
@@ -151,5 +176,9 @@ fn round_half_even(value: f64) -> f64 {
     if value - floor != 0.5 {
         return value.round();
     }
-    if floor % 2.0 == 0.0 { floor } else { floor + 1.0 }
+    if floor % 2.0 == 0.0 {
+        floor
+    } else {
+        floor + 1.0
+    }
 }

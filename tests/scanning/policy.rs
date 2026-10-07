@@ -16,9 +16,11 @@ fn directory_scan_finds_a_vulnerability_beyond_the_former_byte_ceiling() {
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let report = read_json(&report);
     assert_eq!(report["files_scanned"], 1);
-    assert!(report["findings"].as_array().unwrap().iter().any(|finding|
-        finding["rule_id"] == "INJ004" && finding["line_number"] == 2
-    ));
+    assert!(report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|finding| finding["rule_id"] == "INJ004" && finding["line_number"] == 2));
     assert!(report["security_score"].is_null());
     assert!(report["security_grade"].is_null());
     assert!(report["scoring"]["policy"].is_null());
@@ -35,7 +37,10 @@ fn operator_weights_change_score_and_grade_but_never_hide_a_blocking_finding() {
     let report = read_json(&report);
     assert_eq!(report["security_score"].as_f64(), Some(16.0));
     assert_eq!(report["security_grade"], "review");
-    assert_eq!(report["scoring"]["policy"]["deductions"]["high"].as_f64(), Some(4.0));
+    assert_eq!(
+        report["scoring"]["policy"]["deductions"]["high"].as_f64(),
+        Some(4.0)
+    );
 
     declared["deductions"]["high"] = json!(6);
     journey.policy(&declared);
@@ -77,7 +82,9 @@ fn terminal_explains_the_policy_behind_the_score() {
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let text = fs::read_to_string(report).unwrap();
     assert!(text.contains("16/20"), "{text}");
-    let declared = text.lines().find_map(|line| line.strip_prefix("Scoring policy: "))
+    let declared = text
+        .lines()
+        .find_map(|line| line.strip_prefix("Scoring policy: "))
         .expect("terminal report displays the scoring policy");
     let declared: serde_json::Value = serde_json::from_str(declared).unwrap();
     assert_eq!(declared["deductions"]["high"].as_f64(), Some(4.0));
@@ -92,7 +99,9 @@ fn markdown_embeds_an_interpretable_policy_not_just_a_score() {
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let text = fs::read_to_string(report).unwrap();
     assert!(text.contains("16/20"), "{text}");
-    let declared = text.lines().find_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+    let declared = text
+        .lines()
+        .find_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .expect("Markdown report embeds the policy as JSON");
     assert_eq!(declared["deductions"]["high"].as_f64(), Some(4.0));
     assert_eq!(declared["grades"][0]["label"], "review");
@@ -109,7 +118,10 @@ fn empty_scan_does_not_receive_a_perfect_score() {
     assert_eq!(report["files_scanned"], 0);
     assert!(report["security_score"].is_null());
     assert!(report["security_grade"].is_null());
-    assert_eq!(report["scoring"]["policy"]["top_score"].as_f64(), Some(20.0));
+    assert_eq!(
+        report["scoring"]["policy"]["top_score"].as_f64(),
+        Some(20.0)
+    );
 }
 
 #[test]
@@ -130,7 +142,15 @@ fn malformed_incomplete_and_invalid_policies_refuse_without_writing_a_report() {
     reversed["grades"] = json!([{"floor": 0, "label": "low"}, {"floor": 16, "label": "high"}, {"floor": 0, "label": "low"}]);
     let mut bad_label = policy();
     bad_label["grades"][0]["label"] = json!("review\nsecurity_score=20");
-    for declared in [missing, unknown, zero_unit, negative_weight, uncovered, reversed, bad_label] {
+    for declared in [
+        missing,
+        unknown,
+        zero_unit,
+        negative_weight,
+        uncovered,
+        reversed,
+        bad_label,
+    ] {
         let path = journey.policy(&declared);
         let (output, report) = journey.run(&input, "json", Some(&path));
         assert_eq!(output.status.code(), Some(2), "{output:?}");

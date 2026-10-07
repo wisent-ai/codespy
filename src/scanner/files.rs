@@ -31,7 +31,11 @@ static LANGUAGES: LazyLock<Table> =
 pub fn scanned_suffixes() -> impl Iterator<Item = (&'static str, Vec<&'static str>)> {
     let table: &'static Table = &LANGUAGES;
     table.extensions.iter().map(|(language, extensions)| {
-        let suffixes = extensions.iter().filter(|name| name.starts_with('.')).map(String::as_str).collect();
+        let suffixes = extensions
+            .iter()
+            .filter(|name| name.starts_with('.'))
+            .map(String::as_str)
+            .collect();
         (language.as_str(), suffixes)
     })
 }
@@ -56,7 +60,11 @@ pub fn detect_language(path: &Path) -> Option<&'static str> {
 }
 
 fn skipped_directory(name: &str) -> bool {
-    name.starts_with('.') || LANGUAGES.skip_directories.iter().any(|skipped| skipped == name)
+    name.starts_with('.')
+        || LANGUAGES
+            .skip_directories
+            .iter()
+            .any(|skipped| skipped == name)
 }
 
 /// Every file under `root` a scan reads, with its language. A single file is
@@ -65,7 +73,10 @@ fn skipped_directory(name: &str) -> bool {
 /// excludes a supported source file. A directory or file the walk cannot
 /// open is an error naming it, never a silent gap in the scan.
 pub fn collect_files(root: &Path) -> Result<Vec<(PathBuf, &'static str)>, ScanError> {
-    let walk = |path: &Path, error: io::Error| ScanError::Walk { path: path.to_path_buf(), error };
+    let walk = |path: &Path, error: io::Error| ScanError::Walk {
+        path: path.to_path_buf(),
+        error,
+    };
     let mut files = Vec::new();
     if root.is_file() {
         if let Some(language) = detect_language(root) {
@@ -86,7 +97,9 @@ pub fn collect_files(root: &Path) -> Result<Vec<(PathBuf, &'static str)>, ScanEr
                 }
                 continue;
             }
-            let Some(language) = detect_language(&path) else { continue };
+            let Some(language) = detect_language(&path) else {
+                continue;
+            };
             files.push((path, language));
         }
     }

@@ -10,7 +10,9 @@ use std::process::ExitCode;
 use clap::{ArgAction, CommandFactory, Parser, ValueEnum};
 
 use codespy::model::Severity;
-use codespy::report::{format_json, format_markdown, format_sarif, format_terminal, ScoringPolicy, ScoringReport};
+use codespy::report::{
+    format_json, format_markdown, format_sarif, format_terminal, ScoringPolicy, ScoringReport,
+};
 use codespy::scanner::run_scan;
 
 // The exit statuses, each with one meaning (cli.md rule 10): 0 the scan is
@@ -74,7 +76,10 @@ fn print_surface(action_manifest: &std::path::Path) -> ExitCode {
     match surface::surface::<Format>(&Arguments::command(), action_manifest) {
         Ok(names) => {
             let document = serde_json::json!({ "surface": names });
-            println!("{}", serde_json::to_string_pretty(&document).expect("a JSON value always serializes"));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&document).expect("a JSON value always serializes")
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -87,10 +92,19 @@ fn print_surface(action_manifest: &std::path::Path) -> ExitCode {
 /// The minimum severity a `--severity` value names.
 fn parse_severity(value: &str) -> Result<Severity, String> {
     let wanted = value.trim().to_lowercase();
-    Severity::ALL.into_iter().find(|severity| severity.as_str() == wanted).ok_or_else(|| {
-        let names: Vec<&str> = Severity::ALL.iter().map(|severity| severity.as_str()).collect();
-        format!("Invalid severity: {wanted}. Choose from: {}", names.join(", "))
-    })
+    Severity::ALL
+        .into_iter()
+        .find(|severity| severity.as_str() == wanted)
+        .ok_or_else(|| {
+            let names: Vec<&str> = Severity::ALL
+                .iter()
+                .map(|severity| severity.as_str())
+                .collect();
+            format!(
+                "Invalid severity: {wanted}. Choose from: {}",
+                names.join(", ")
+            )
+        })
 }
 
 fn main() -> ExitCode {
@@ -109,7 +123,12 @@ fn main() -> ExitCode {
             return ExitCode::from(USAGE_EXIT);
         }
     };
-    let policy = match arguments.scoring_policy.as_deref().map(ScoringPolicy::load).transpose() {
+    let policy = match arguments
+        .scoring_policy
+        .as_deref()
+        .map(ScoringPolicy::load)
+        .transpose()
+    {
         Ok(policy) => policy,
         Err(error) => {
             eprintln!("Error: {error}");
@@ -155,6 +174,13 @@ fn main() -> ExitCode {
     }
 
     // A critical or high finding fails the run, which is what a CI step reads.
-    let blocking = result.findings.iter().any(|finding| finding.severity >= Severity::High);
-    if blocking { ExitCode::FAILURE } else { ExitCode::SUCCESS }
+    let blocking = result
+        .findings
+        .iter()
+        .any(|finding| finding.severity >= Severity::High);
+    if blocking {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }

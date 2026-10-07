@@ -41,7 +41,10 @@ fn thousands(value: usize) -> String {
 fn by_file(result: &ScanResult) -> BTreeMap<&str, Vec<&Finding>> {
     let mut files: BTreeMap<&str, Vec<&Finding>> = BTreeMap::new();
     for finding in &result.findings {
-        files.entry(finding.file_path.as_str()).or_default().push(finding);
+        files
+            .entry(finding.file_path.as_str())
+            .or_default()
+            .push(finding);
     }
     files
 }

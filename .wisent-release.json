@@ -11,7 +11,7 @@
     "linux-amd64": {
       "runner_platform": "linux-amd64",
       "quality": [
-        {"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"]}
+        {"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"], "kind": "format"}
       ],
       "build": {
         "argv": ["cargo", "build", "--release", "--locked", "--target-dir", "target"]

@@ -6,7 +6,7 @@ declared="$(awk -F'"' '/^version *=/{print $2; exit}' Cargo.toml)"
 echo "released: $released"
 echo "declared: $declared"
 
-verdict="$(stado release version-gate decide --json \
+verdict="$(stado release gate decide --json \
   --current "$released" \
   --published-surface released-surface.json \
   --candidate-surface "$RUNNER_TEMP/candidate.json")"

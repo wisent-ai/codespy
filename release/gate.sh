@@ -9,7 +9,7 @@ set -euo pipefail
 # to open, its output formats, its command line and the Action's inputs and
 # outputs. The rule itself lives once for the whole fleet
 # (https://github.com/lbartoszcze/AutoVersion) and is answered by Stado's one
-# port of it, `stado release version-gate`; this repository supplies only its
+# port of it, `stado release gate`; this repository supplies only its
 # surface and the version it declares.
 #
 # Where the baseline's provenance comes from depends on where the gate runs. In
@@ -19,10 +19,11 @@ set -euo pipefail
 # at .wisent-provenance/baseline.json, which verify-provenance.sh reads. No
 # second checkout is ever made.
 root="$(pwd)"
-export CODESPY_BIN="${CODESPY_BIN:-$root/target/release/codespy}"
+# The binary the release build step writes (.wisent-release.json: --target-dir target).
+export CODESPY_BIN="$root/target/release/codespy"
 if [ ! -x "$CODESPY_BIN" ]; then
   echo "::error::no built codespy at $CODESPY_BIN; the gate reads the release's own binary." >&2
-  exit 1
+  false
 fi
 # Scratch lives in this tree's ignored build directory.
 export RUNNER_TEMP="$root/target/version-gate"

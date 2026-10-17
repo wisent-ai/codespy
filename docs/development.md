@@ -34,7 +34,7 @@ surface is the one the binary actually has.
 The version gate runs in the release, not per push: `.wisent-release.json`
 builds `codespy` once and then runs `release/gate.sh`, which reads that built
 binary's `--surface` and asks Stado's one port of the fleet's versioning rule
-(`stado release version-gate decide|conformance|semver-at-least`, AutoVersion
+(`stado release gate decide|conformance|semver reaches`, AutoVersion
 SPEC v0.1.0); codespy carries no copy of the rule. `prove-rule.sh` first
 requires that port to reproduce every case of the SPEC's pinned FIXTURES.md
 and to answer `internal` for the committed surface against itself and

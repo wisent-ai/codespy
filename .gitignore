@@ -1,4 +1,5 @@
 *.sarif
 .env
 /build/
+/.build/
 /target/

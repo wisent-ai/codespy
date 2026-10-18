@@ -11,15 +11,15 @@ const DIM: &str = "\x1b[2m";
 const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
-/// Width of the horizontal rules between report sections.
-const RULE_WIDTH: usize = 60;
-/// Column widths of the language table and the finding lines.
-const LANGUAGE_WIDTH: usize = 15;
-const FILE_COUNT_WIDTH: usize = 4;
-const LINE_COUNT_WIDTH: usize = 8;
-const SUMMARY_SEVERITY_WIDTH: usize = 10;
-const FINDING_SEVERITY_WIDTH: usize = 8;
-const LINE_NUMBER_WIDTH: usize = 5;
+
+/// The width a column needs to hold every value it shows: its widest one.
+fn column_width<'a>(values: impl Iterator<Item = &'a str>) -> usize {
+    values
+        .map(|value| value.chars().count())
+        .max()
+        .into_iter()
+        .sum()
+}
 
 fn severity_color(severity: Severity) -> &'static str {
     match severity {
@@ -41,9 +41,11 @@ pub fn format_terminal(
 ) -> String {
     let paint = |code: &'static str| if use_color { code } else { "" };
     let (bold, dim, reset) = (paint(BOLD), paint(DIM), paint(RESET));
-    let rule = "─".repeat(RULE_WIDTH);
+    let title = format!("codespy v{VERSION} — Code Security Scanner");
+    // The rules between sections are as wide as the report's title.
+    let rule = "─".repeat(title.chars().count());
     let mut lines = vec![
-        format!("\n{bold}codespy v{VERSION}{reset} — Code Security Scanner"),
+        format!("\n{bold}{title}{reset}"),
         format!("{dim}{rule}{reset}"),
         format!("  Path:    {}", result.path),
         format!(
@@ -62,13 +64,25 @@ pub fn format_terminal(
 
     if !result.language_stats.is_empty() {
         lines.push(format!("{bold}Languages:{reset}"));
-        let mut languages: Vec<_> = result.language_stats.iter().collect();
-        languages.sort_by(|left, right| right.1.lines.cmp(&left.1.lines));
-        for (language, stats) in languages {
+        let mut languages: Vec<_> = result
+            .language_stats
+            .iter()
+            .map(|(language, stats)| {
+                (
+                    language.as_str(),
+                    stats.files.to_string(),
+                    thousands(stats.lines),
+                    stats.lines,
+                )
+            })
+            .collect();
+        languages.sort_by(|left, right| right.3.cmp(&left.3));
+        let language_width = column_width(languages.iter().map(|row| row.0));
+        let files_width = column_width(languages.iter().map(|row| row.1.as_str()));
+        let lines_width = column_width(languages.iter().map(|row| row.2.as_str()));
+        for (language, files, line_count, _) in &languages {
             lines.push(format!(
-                "  {language:<LANGUAGE_WIDTH$} {:>FILE_COUNT_WIDTH$} files  {:>LINE_COUNT_WIDTH$} lines",
-                stats.files,
-                thousands(stats.lines),
+                "  {language:<language_width$} {files:>files_width$} files  {line_count:>lines_width$} lines"
             ));
         }
         lines.push(String::new());
@@ -79,15 +93,25 @@ pub fn format_terminal(
         "{bold}Findings:{reset} {} total",
         result.finding_count()
     ));
-    for severity in summary_order() {
+    // A severity is listed when a finding has it.
+    let present: Vec<Severity> = summary_order()
+        .into_iter()
+        .filter(|severity| {
+            result
+                .findings
+                .iter()
+                .any(|finding| finding.severity == *severity)
+        })
+        .collect();
+    let names: Vec<String> = present
+        .iter()
+        .map(|severity| severity.as_str().to_uppercase())
+        .collect();
+    let summary_width = column_width(names.iter().map(String::as_str));
+    for (severity, name) in present.iter().zip(&names) {
         let count = counts[severity.as_str()];
-        if count > 0 {
-            let name = severity.as_str().to_uppercase();
-            let color = paint(severity_color(severity));
-            lines.push(format!(
-                "  {color}{name:<SUMMARY_SEVERITY_WIDTH$}{reset} {count}"
-            ));
-        }
+        let color = paint(severity_color(*severity));
+        lines.push(format!("  {color}{name:<summary_width$}{reset} {count}"));
     }
     lines.push(String::new());
 
@@ -99,6 +123,18 @@ pub fn format_terminal(
         return lines.join("\n");
     }
 
+    let finding_names: Vec<String> = result
+        .findings
+        .iter()
+        .map(|finding| finding.severity.as_str().to_uppercase())
+        .collect();
+    let finding_width = column_width(finding_names.iter().map(String::as_str));
+    let line_numbers: Vec<String> = result
+        .findings
+        .iter()
+        .map(|finding| finding.line_number.to_string())
+        .collect();
+    let line_number_width = column_width(line_numbers.iter().map(String::as_str));
     lines.push(format!("{dim}{rule}{reset}"));
     for (file_path, findings) in by_file(result) {
         lines.push(format!("\n{bold}{file_path}{reset}"));
@@ -106,7 +142,7 @@ pub fn format_terminal(
             let name = finding.severity.as_str().to_uppercase();
             let color = paint(severity_color(finding.severity));
             lines.push(format!(
-                "  {color}{name:<FINDING_SEVERITY_WIDTH$}{reset}  L{:<LINE_NUMBER_WIDTH$} [{}] {}",
+                "  {color}{name:<finding_width$}{reset}  L{:<line_number_width$} [{}] {}",
                 finding.line_number, finding.rule_id, finding.title,
             ));
             let shown = finding.line_content.trim();
